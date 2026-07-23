@@ -112,7 +112,7 @@ const bot = new Client({
     authStrategy: new LocalAuth({ clientId: "sesion-actas" }),
     puppeteer: {
         headless: true,
-        executablePath: '/usr/bin/chromium', // <--- Forzamos el uso de Chromium del sistema para evitar errores de librerías
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, // <--- Con esto Railway asigna la ruta correcta en automático
         args: [
             '--no-sandbox', 
             '--disable-setuid-sandbox', 
