@@ -111,7 +111,8 @@ let configSistema = cargarConfig();
 const bot = new Client({
     authStrategy: new LocalAuth({ clientId: "sesion-actas" }),
     puppeteer: {
-        headless: true, // Requerido para la nube
+        headless: true,
+        executablePath: '/usr/bin/chromium', // <--- Forzamos el uso de Chromium del sistema para evitar errores de librerías
         args: [
             '--no-sandbox', 
             '--disable-setuid-sandbox', 
