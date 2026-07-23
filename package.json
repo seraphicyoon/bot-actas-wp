@@ -6,6 +6,7 @@
     "start": "node index.cjs"
   },
   "dependencies": {
+    "puppeteer": "^22.0.0",
     "qrcode-terminal": "^0.12.0",
     "whatsapp-web.js": "^1.34.7"
   }
