@@ -21,9 +21,6 @@ const SÚPER_ADMINS_NATOS = [
     '91440457773103@lid'
 ];
 
-// 📱 NÚMERO DEL BOT PARA EL CÓDIGO DE VINCULACIÓN
-const NUMERO_TELEFONO = '5219811718463'; 
-
 // --- PRECIOS BASE GENERALES ---
 const PRECIO_NACIMIENTO = 12;
 const PRECIO_NACIMIENTO_NF = 15;
@@ -122,7 +119,7 @@ let configSistema = cargarConfig();
 
 const bot = new Client({
     authStrategy: new LocalAuth({ 
-        clientId: "sesion-actas-v4", 
+        clientId: "sesion-actas-v5", 
         dataPath: CARPETA_DATOS 
     }),
     puppeteer: {
@@ -138,17 +135,13 @@ const bot = new Client({
     }
 });
 
-// 🔢 SOLICITAR Y MOSTRAR ÚNICAMENTE EL CÓDIGO DE 8 DÍGITOS
-bot.on('qr', async (qr) => {
-    console.log('\n--- SOLICITANDO CÓDIGO DE VINCULACIÓN DE 8 DÍGITOS ---');
-    try {
-        const pairingCode = await bot.requestPairingCode(NUMERO_TELEFONO);
-        console.log('\n======================================================');
-        console.log(`🔢 TU CÓDIGO DE VINCULACIÓN ES: ${pairingCode}`);
-        console.log('======================================================\n');
-    } catch (e) {
-        console.log('⚠️ Error al solicitar el código, se reintentará en breve...', e.message);
-    }
+// 🔗 GENERA UN ENLACE DIRECTO CON LA IMAGEN LIMPIA DEL QR
+bot.on('qr', (qr) => {
+    const qrWebUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
+    console.log('\n======================================================');
+    console.log('🔗 ABRE ESTE ENLACE EN TU NAVEGADOR PARA VER EL QR:');
+    console.log(qrWebUrl);
+    console.log('======================================================\n');
 });
 
 bot.on('ready', () => {
