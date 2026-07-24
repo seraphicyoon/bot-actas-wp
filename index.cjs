@@ -2,13 +2,13 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
-const http = require('http'); // 🌐 Servidor fantasma para Railway
+const http = require('http');
 
 process.on('unhandledRejection', (reason, promise) => {
     console.log('⚠️ Error de red bloqueado:', reason);
 });
 
-// 🌐 SERVIDOR FANTASMA
+// 🌐 SERVIDOR FANTASMA PARA RAILWAY
 const port = process.env.PORT || 3000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -22,9 +22,6 @@ const SÚPER_ADMINS_NATOS = [
     '91440457773103@lid'
 ];
 
-// 📱 NÚMERO DEL BOT ACTUALIZADO PARA EL CÓDIGO DE VINCULACIÓN EN LA NUBE
-const NUMERO_TELEFONO = '5219811718463'; 
-
 // --- PRECIOS BASE GENERALES ---
 const PRECIO_NACIMIENTO = 12;
 const PRECIO_NACIMIENTO_NF = 15;
@@ -36,7 +33,6 @@ const PRECIO_DIVORCIO = 12;
 const PRECIO_DIVORCIO_D0 = 15;
 const PRECIO_SAT = 40;
 const PRECIO_RFCCLON = 15; 
-// ✨ PRECIOS BASE NUEVOS (MODIFICABLES POR EL VENDEDOR) ✨
 const PRECIO_RECETA = 15;
 const PRECIO_CESCOLAR = 15;
 const PRECIO_CMEDICO = 15;
@@ -86,7 +82,6 @@ function guardarConfig(config) {
     try { fs.writeFileSync(PATH_CONFIG, JSON.stringify(config, null, 4), 'utf8'); } catch (error) {}
 }
 
-// 🛡️ FUNCIÓN BLINDADA PARA EXTRAER EL ID DE UN MENSAJE CITADO
 async function extraerIdUsuarioCitado(msg) {
     if (!msg.hasQuotedMsg) return "";
     if (msg._data) {
@@ -125,7 +120,7 @@ let configSistema = cargarConfig();
 
 const bot = new Client({
     authStrategy: new LocalAuth({ 
-        clientId: "sesion-actas-v2", // Sesión limpia para evitar bloqueos
+        clientId: "sesion-actas-v3", 
         dataPath: CARPETA_DATOS 
     }),
     puppeteer: {
@@ -141,27 +136,17 @@ const bot = new Client({
     }
 });
 
+// 📱 IMPRIMIR QR LIMPIO Y PEQUEÑO EN LA CONSOLA DE RAILWAY
 bot.on('qr', (qr) => {
+    console.log('\n--- ESCANEA ESTE CÓDIGO QR CON TU WHATSAPP ---');
     qrcode.generate(qr, { small: true });
-    console.log('✨ Escanea el código QR ✨');
-    
-    if (NUMERO_TELEFONO && NUMERO_TELEFONO.length > 8) {
-        setTimeout(async () => {
-            try {
-                const pairingCode = await bot.requestPairingCode(NUMERO_TELEFONO);
-                console.log(`\n=========================================`);
-                console.log(`🔢 TU CÓDIGO DE VINCULACIÓN ES: ${pairingCode}`);
-                console.log(`========================================-\n`);
-            } catch (e) {}
-        }, 4000);
-    }
+    console.log('----------------------------------------------\n');
 });
 
 bot.on('ready', () => {
     console.log('🚀 ¡Bot en línea en la nube con sistema extendido!');
 });
 
-// 🔔 EVENTO AUTOMÁTICO: AVISAR CUANDO ABREN O CIERRAN EL GRUPO
 bot.on('group_update', async (notification) => {
     try {
         const chatId = notification.chatId || (notification.id && notification.id.remote);
@@ -317,7 +302,6 @@ bot.on('message_create', async (msg) => {
                 return;
             }
 
-            // GESTIÓN DE NOTIFICADORES
             if (textoMensaje.toLowerCase() === '/addnotis') {
                 if (!esGrupo) return await msg.reply('⚠️ Úsalo dentro del grupo.');
                 if (!deMiNumero && !esDuenioDelGrupo && !esAdminDelGrupo) return await msg.reply('⚠️ No tienes permisos.');
@@ -367,7 +351,6 @@ bot.on('message_create', async (msg) => {
                 return;
             }
 
-            // GESTIÓN DE STOCK POR EL VENDEDOR 📦
             if (textoMensaje.toLowerCase().startsWith('/setstock ')) {
                 if (!tienePermisoOperativo) return;
                 if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
@@ -489,7 +472,6 @@ bot.on('message_create', async (msg) => {
                 }
             }
 
-            // COMANDO /R (REENVÍO SEGURO)
             if (textoMensaje.toLowerCase().startsWith('/r ')) {
                 try {
                     const argumentos = textoMensaje.split(' ').filter(arg => arg.trim() !== "");
@@ -551,11 +533,6 @@ bot.on('message_create', async (msg) => {
             }
         }
 
-        // -----------------------------------------------------------------
-        // COMANDOS DE PUNTO (.) PARA VENDEDORES Y CLIENTES
-        // -----------------------------------------------------------------
-        
-        // 🌸 MANUAL DE BOLSILLO (EXCLUSIVO VENDEDORES / ADMINS)
         if (textoMensaje.toLowerCase() === '.jinni') {
             if (!tienePermisoOperativo) return; 
             
@@ -600,7 +577,6 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // 💳 CONFIGURAR DATOS DE PAGO (VENDEDOR)
         if (textoMensaje.toLowerCase().startsWith('.setpago ') || textoMensaje.toLowerCase().startsWith('/setpago ')) {
             if (!tienePermisoOperativo) return;
             if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
@@ -613,7 +589,6 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // 💳 MOSTRAR DATOS DE PAGO (CLIENTES)
         if (textoMensaje.toLowerCase() === '.pago') {
             if (esGrupo && !esGrupoAutorizado) return;
             const msjPago = (configSistema.pagosGrupos && configSistema.pagosGrupos[chatId]) ? configSistema.pagosGrupos[chatId] : 'ℹ️ El vendedor aún no ha configurado sus datos de pago en este grupo.';
@@ -621,7 +596,6 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // 🔋 CONSULTA DE SALDO (CLIENTES)
         if (textoMensaje.toLowerCase() === '.versaldo') {
             if (esGrupo && !esGrupoAutorizado) return;
             const cliente = msg.author || msg.from;
@@ -631,7 +605,6 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // 👢 EXPULSIÓN DE USUARIOS
         if (textoMensaje.toLowerCase().startsWith('.kick')) {
             if (!tienePermisoOperativo) return;
             if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
@@ -654,7 +627,6 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // 📢 NOTIFICACIÓN GENERAL INVISIBLE
         if (textoMensaje.toLowerCase().startsWith('.n ')) {
             if (!tienePermisoOperativo) return;
             if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
@@ -675,7 +647,6 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // 📦 CONSULTA DE INVENTARIO
         if (textoMensaje.toLowerCase() === '.stock') {
             if (esGrupo && !esGrupoAutorizado) return;
             const msjStock = (configSistema.stockGrupos && configSistema.stockGrupos[chatId]) ? configSistema.stockGrupos[chatId] : 'ℹ️ No hay información de stock establecida por el momento.';
@@ -683,10 +654,6 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-
-        // -----------------------------------------------------------------
-        // PROCESAMIENTO MÚLTIPLE DE TRÁMITES (ACTAS, SAT, RFC Y NUEVOS)
-        // -----------------------------------------------------------------
         if (esGrupo && !esGrupoAutorizado) return;
 
         if (!textoMensaje.startsWith('/') && !textoMensaje.startsWith('.kick') && !textoMensaje.startsWith('.n ') && !textoMensaje.toLowerCase().startsWith('.setpago') && textoMensaje.toLowerCase() !== '.stock' && textoMensaje.toLowerCase() !== '.pago' && textoMensaje.toLowerCase() !== '.jinni' && textoMensaje.toLowerCase() !== '.versaldo') {
