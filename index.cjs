@@ -1,5 +1,4 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -21,6 +20,9 @@ const SÚPER_ADMINS_NATOS = [
     '5215658405318@c.us',
     '91440457773103@lid'
 ];
+
+// 📱 NÚMERO DEL BOT PARA EL CÓDIGO DE VINCULACIÓN
+const NUMERO_TELEFONO = '5219811718463'; 
 
 // --- PRECIOS BASE GENERALES ---
 const PRECIO_NACIMIENTO = 12;
@@ -120,7 +122,7 @@ let configSistema = cargarConfig();
 
 const bot = new Client({
     authStrategy: new LocalAuth({ 
-        clientId: "sesion-actas-v3", 
+        clientId: "sesion-actas-v4", 
         dataPath: CARPETA_DATOS 
     }),
     puppeteer: {
@@ -136,11 +138,17 @@ const bot = new Client({
     }
 });
 
-// 📱 IMPRIMIR QR LIMPIO Y PEQUEÑO EN LA CONSOLA DE RAILWAY
-bot.on('qr', (qr) => {
-    console.log('\n--- ESCANEA ESTE CÓDIGO QR CON TU WHATSAPP ---');
-    qrcode.generate(qr, { small: true });
-    console.log('----------------------------------------------\n');
+// 🔢 SOLICITAR Y MOSTRAR ÚNICAMENTE EL CÓDIGO DE 8 DÍGITOS
+bot.on('qr', async (qr) => {
+    console.log('\n--- SOLICITANDO CÓDIGO DE VINCULACIÓN DE 8 DÍGITOS ---');
+    try {
+        const pairingCode = await bot.requestPairingCode(NUMERO_TELEFONO);
+        console.log('\n======================================================');
+        console.log(`🔢 TU CÓDIGO DE VINCULACIÓN ES: ${pairingCode}`);
+        console.log('======================================================\n');
+    } catch (e) {
+        console.log('⚠️ Error al solicitar el código, se reintentará en breve...', e.message);
+    }
 });
 
 bot.on('ready', () => {
