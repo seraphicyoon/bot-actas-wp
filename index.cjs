@@ -2,9 +2,19 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
+const http = require('http'); // 🌐 Módulo para el servidor fantasma
 
 process.on('unhandledRejection', (reason, promise) => {
     console.log('⚠️ Error de red bloqueado:', reason);
+});
+
+// 🌐 SERVIDOR FANTASMA PARA ENGAÑAR A RAILWAY Y QUE DEJE ARRANCAR EL BOT
+const port = process.env.PORT || 3000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('El Bot de WhatsApp esta encendido y funcionando al 100% 🚀');
+}).listen(port, () => {
+    console.log(`🌐 Servidor fantasma activado en el puerto ${port} (Railway está feliz)`);
 });
 
 // --- TUS CREDENCIALES DE SÚPER ADMINISTRADORA ---
@@ -62,8 +72,8 @@ function cargarConfig() {
             if (!config.precios) config.precios = {};
             if (!config.propietariosGrupos) config.propietariosGrupos = {};
             if (!config.notificadoresGrupos) config.notificadoresGrupos = {};
-            if (!config.stockGrupos) config.stockGrupos = {}; // 🌸 Base de datos de Stock
-            if (!config.pagosGrupos) config.pagosGrupos = {}; // 💳 Base de datos de Pagos
+            if (!config.stockGrupos) config.stockGrupos = {}; 
+            if (!config.pagosGrupos) config.pagosGrupos = {}; 
             return config;
         }
     } catch (e) {}
@@ -113,7 +123,6 @@ async function extraerIdUsuarioCitado(msg) {
         } catch (e) {}
     }
     
-    // 🛑 Candado final: Jamás devolver el ID del grupo por accidente
     if (idExtraido && idExtraido.includes('@g.us')) {
         return "";
     }
@@ -152,7 +161,6 @@ bot.on('code', async (code) => {
     console.log(`🔢 CÓDIGO DE VINCULACIÓN: ${code}`);
 });
 
-// 🔔 EVENTO AUTOMÁTICO: AVISAR CUANDO ABREN O CIERRAN EL GRUPO
 bot.on('group_update', async (notification) => {
     try {
         const chatId = notification.chatId || (notification.id && notification.id.remote);
@@ -161,7 +169,6 @@ bot.on('group_update', async (notification) => {
         let configActual = cargarConfig();
         if (!configActual.gruposAutorizados.includes(chatId)) return;
 
-        // Si cambian los permisos de quién puede hablar en el grupo
         if (notification.type === 'announce') {
             setTimeout(async () => {
                 try {
@@ -326,7 +333,6 @@ bot.on('message_create', async (msg) => {
                 return;
             }
 
-            // GESTIÓN DE NOTIFICADORES
             if (textoMensaje.toLowerCase() === '/addnotis') {
                 if (!esGrupo) return await msg.reply('⚠️ Úsalo dentro del grupo.');
                 if (!deMiNumero && !esDuenioDelGrupo && !esAdminDelGrupo) return await msg.reply('⚠️ No tienes permisos.');
@@ -376,7 +382,6 @@ bot.on('message_create', async (msg) => {
                 return;
             }
 
-            // GESTIÓN DE STOCK POR EL VENDEDOR 📦
             if (textoMensaje.toLowerCase().startsWith('/setstock ')) {
                 if (!tienePermisoOperativo) return;
                 if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
@@ -498,7 +503,6 @@ bot.on('message_create', async (msg) => {
                 }
             }
 
-            // COMANDO /R (REENVÍO SEGURO)
             if (textoMensaje.toLowerCase().startsWith('/r ')) {
                 try {
                     const argumentos = textoMensaje.split(' ').filter(arg => arg.trim() !== "");
@@ -564,7 +568,6 @@ bot.on('message_create', async (msg) => {
         // COMANDOS DE PUNTO (.) PARA VENDEDORES Y CLIENTES
         // -----------------------------------------------------------------
         
-        // 🌸 MANUAL DE BOLSILLO (EXCLUSIVO VENDEDORES / ADMINS)
         if (textoMensaje.toLowerCase() === '.jinni') {
             if (!tienePermisoOperativo) return; 
             
@@ -609,7 +612,6 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // 💳 CONFIGURAR DATOS DE PAGO (VENDEDOR)
         if (textoMensaje.toLowerCase().startsWith('.setpago ') || textoMensaje.toLowerCase().startsWith('/setpago ')) {
             if (!tienePermisoOperativo) return;
             if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
@@ -622,7 +624,6 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // 💳 MOSTRAR DATOS DE PAGO (CLIENTES)
         if (textoMensaje.toLowerCase() === '.pago') {
             if (esGrupo && !esGrupoAutorizado) return;
             const msjPago = (configSistema.pagosGrupos && configSistema.pagosGrupos[chatId]) ? configSistema.pagosGrupos[chatId] : 'ℹ️ El vendedor aún no ha configurado sus datos de pago en este grupo.';
@@ -630,7 +631,6 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // 🔋 CONSULTA DE SALDO (CLIENTES)
         if (textoMensaje.toLowerCase() === '.versaldo') {
             if (esGrupo && !esGrupoAutorizado) return;
             const cliente = msg.author || msg.from;
@@ -640,7 +640,6 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // 👢 EXPULSIÓN DE USUARIOS (BLINDADO)
         if (textoMensaje.toLowerCase().startsWith('.kick')) {
             if (!tienePermisoOperativo) return;
             if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
@@ -669,7 +668,6 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // 📢 NOTIFICACIÓN GENERAL INVISIBLE
         if (textoMensaje.toLowerCase().startsWith('.n ')) {
             if (!tienePermisoOperativo) return;
             if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
@@ -690,7 +688,6 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // 📦 CONSULTA DE INVENTARIO
         if (textoMensaje.toLowerCase() === '.stock') {
             if (esGrupo && !esGrupoAutorizado) return;
             const msjStock = (configSistema.stockGrupos && configSistema.stockGrupos[chatId]) ? configSistema.stockGrupos[chatId] : 'ℹ️ No hay información de stock establecida por el momento.';
@@ -700,11 +697,10 @@ bot.on('message_create', async (msg) => {
 
 
         // -----------------------------------------------------------------
-        // PROCESAMIENTO MÚLTIPLE DE TRÁMITES (ACTAS, SAT, RFC Y NUEVOS)
+        // PROCESAMIENTO MÚLTIPLE DE TRÁMITES
         // -----------------------------------------------------------------
         if (esGrupo && !esGrupoAutorizado) return;
 
-        // Validamos que no sea un comando especial
         if (!textoMensaje.startsWith('/') && !textoMensaje.startsWith('.kick') && !textoMensaje.startsWith('.n ') && !textoMensaje.toLowerCase().startsWith('.setpago') && textoMensaje.toLowerCase() !== '.stock' && textoMensaje.toLowerCase() !== '.pago' && textoMensaje.toLowerCase() !== '.jinni' && textoMensaje.toLowerCase() !== '.versaldo') {
             const lineas = textoMensaje.split('\n').map(l => l.trim()).filter(l => l !== "");
             
@@ -724,7 +720,6 @@ bot.on('message_create', async (msg) => {
             let pDivD0 = configSistema.precios?.[chatId]?.divorcio_d0 ?? PRECIO_DIVORCIO_D0;
             let pSat = configSistema.precios?.[chatId]?.sat ?? PRECIO_SAT;
             let pRfc = configSistema.precios?.[chatId]?.rfcclon ?? PRECIO_RFCCLON;
-            // Precios de nuevos servicios
             let pReceta = configSistema.precios?.[chatId]?.receta ?? PRECIO_RECETA;
             let pCEscolar = configSistema.precios?.[chatId]?.cescolar ?? PRECIO_CESCOLAR;
             let pCMedico = configSistema.precios?.[chatId]?.cmedico ?? PRECIO_CMEDICO;
@@ -754,7 +749,6 @@ bot.on('message_create', async (msg) => {
                 } else if (matchRfcClon) {
                     tramitesAProcesar.push({ tipo: 'rfcclon', identificador: `RFC CLON: ${matchRfcClon[1].toUpperCase()}`, codigo: matchRfcClon[2], costo: pRfc, nombreServicio: "RFC Clon" });
                 } 
-                // DETECCIÓN DE NUEVOS TRÁMITES CON PREFIJO
                 else if (lineaLow.startsWith('.receta')) {
                     const datosExtra = linea.slice(7).trim() || "Sin datos extras";
                     tramitesAProcesar.push({ tipo: 'receta', identificador: `📝 Datos: ${datosExtra}`, codigo: "REC", costo: pReceta, nombreServicio: "Receta Médica" });
