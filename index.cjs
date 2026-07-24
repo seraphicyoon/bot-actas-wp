@@ -28,6 +28,10 @@ const PRECIO_DIVORCIO = 12;
 const PRECIO_DIVORCIO_D0 = 15;
 const PRECIO_SAT = 40;
 const PRECIO_RFCCLON = 15; 
+// ✨ PRECIOS BASE NUEVOS (MODIFICABLES POR EL VENDEDOR) ✨
+const PRECIO_RECETA = 15;
+const PRECIO_CESCOLAR = 15;
+const PRECIO_CMEDICO = 15;
 
 // --- BASES DE DATOS ---
 const PATH_SALDOS = path.join(__dirname, 'saldos.json');
@@ -58,11 +62,13 @@ function cargarConfig() {
             if (!config.precios) config.precios = {};
             if (!config.propietariosGrupos) config.propietariosGrupos = {};
             if (!config.notificadoresGrupos) config.notificadoresGrupos = {};
+            if (!config.stockGrupos) config.stockGrupos = {}; // 🌸 Base de datos de Stock
+            if (!config.pagosGrupos) config.pagosGrupos = {}; // 💳 Base de datos de Pagos
             return config;
         }
     } catch (e) {}
     
-    const configInicial = { gruposAutorizados: [], vendedores: [], superAdmins: [], gruposDestino: {}, precios: {}, propietariosGrupos: {}, notificadoresGrupos: {} };
+    const configInicial = { gruposAutorizados: [], vendedores: [], superAdmins: [], gruposDestino: {}, precios: {}, propietariosGrupos: {}, notificadoresGrupos: {}, stockGrupos: {}, pagosGrupos: {} };
     fs.writeFileSync(PATH_CONFIG, JSON.stringify(configInicial, null, 4), 'utf8');
     return configInicial;
 }
@@ -112,7 +118,7 @@ const bot = new Client({
     authStrategy: new LocalAuth({ clientId: "sesion-actas" }),
     puppeteer: {
         headless: true,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, // <--- Con esto Railway asigna la ruta correcta en automático
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
         args: [
             '--no-sandbox', 
             '--disable-setuid-sandbox', 
@@ -129,11 +135,34 @@ bot.on('qr', (qr) => {
 });
 
 bot.on('ready', () => {
-    console.log('🚀 ¡Bot en línea en la nube! Trámites y precios separados activos.');
+    console.log('🚀 ¡Bot en línea en la nube con sistema extendido!');
 });
 
 bot.on('code', async (code) => {
     console.log(`🔢 CÓDIGO DE VINCULACIÓN: ${code}`);
+});
+
+// 🔔 EVENTO AUTOMÁTICO: AVISAR CUANDO ABREN O CIERRAN EL GRUPO
+bot.on('group_update', async (notification) => {
+    try {
+        const chatId = notification.chatId || (notification.id && notification.id.remote);
+        if (!chatId) return;
+
+        let configActual = cargarConfig();
+        if (!configActual.gruposAutorizados.includes(chatId)) return;
+
+        // Si cambian los permisos de quién puede hablar en el grupo
+        if (notification.type === 'announce') {
+            const chat = await bot.getChatById(chatId);
+            if (chat.announce) {
+                await bot.sendMessage(chatId, '🔒 *LA TIENDA HA CERRADO* 🔒\nPor el momento los administradores han pausado los pedidos. ¡Regresamos pronto!');
+            } else {
+                await bot.sendMessage(chatId, '🔓 *¡LA TIENDA ESTÁ ABIERTA!* 🔓\nEl grupo está disponible nuevamente. Ya pueden solicitar sus trámites con normalidad.');
+            }
+        }
+    } catch (error) {
+        console.log('Error en evento de grupo:', error);
+    }
 });
 
 bot.initialize().then(async () => {
@@ -331,19 +360,32 @@ bot.on('message_create', async (msg) => {
                 return;
             }
 
+            // GESTIÓN DE STOCK POR EL VENDEDOR 📦
+            if (textoMensaje.toLowerCase().startsWith('/setstock ')) {
+                if (!tienePermisoOperativo) return;
+                if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
+
+                const nuevoStock = textoMensaje.slice(10).trim();
+                if (!configSistema.stockGrupos) configSistema.stockGrupos = {};
+                configSistema.stockGrupos[chatId] = nuevoStock;
+                guardarConfig(configSistema);
+                await msg.reply('✅ *Inventario actualizado.*\nCuando los clientes escriban `.stock`, verán tu mensaje.');
+                return;
+            }
+
             if (!tienePermisoOperativo) return; 
 
             if (textoMensaje.toLowerCase().startsWith('/precio ')) {
                 if (!esGrupo) return await msg.reply('⚠️ Úsalo en un grupo.');
                 const argumentos = textoMensaje.split(' ').filter(arg => arg.trim() !== "");
-                if (argumentos.length < 3) return await msg.reply('⚠️ Uso: `/precio matrimonio 65` o `/precio acta 15`');
+                if (argumentos.length < 3) return await msg.reply('⚠️ Uso: `/precio receta 35` o `/precio acta 15`');
 
                 let tipoServicio = argumentos[1].toLowerCase();
                 const nuevoPrecio = parseInt(argumentos[2], 10);
 
                 if (isNaN(nuevoPrecio) || nuevoPrecio < 1) return await msg.reply('⚠️ Cantidad inválida.');
                 
-                const serviciosValidos = ['nacimiento', 'nacimiento_nf', 'matrimonio', 'matrimonio_mf', 'defuncion', 'defuncion_df', 'divorcio', 'divorcio_d0', 'sat', 'rfcclon', 'acta'];
+                const serviciosValidos = ['nacimiento', 'nacimiento_nf', 'matrimonio', 'matrimonio_mf', 'defuncion', 'defuncion_df', 'divorcio', 'divorcio_d0', 'sat', 'rfcclon', 'acta', 'receta', 'cescolar', 'cmedico'];
                 if (!serviciosValidos.includes(tipoServicio)) {
                     return await msg.reply('⚠️ Servicio inválido.');
                 }
@@ -360,7 +402,10 @@ bot.on('message_create', async (msg) => {
                         divorcio: PRECIO_DIVORCIO, 
                         divorcio_d0: PRECIO_DIVORCIO_D0,
                         sat: PRECIO_SAT, 
-                        rfcclon: PRECIO_RFCCLON 
+                        rfcclon: PRECIO_RFCCLON,
+                        receta: PRECIO_RECETA,
+                        cescolar: PRECIO_CESCOLAR,
+                        cmedico: PRECIO_CMEDICO
                     };
                 }
 
@@ -500,11 +545,134 @@ bot.on('message_create', async (msg) => {
         }
 
         // -----------------------------------------------------------------
-        // PROCESAMIENTO MÚLTIPLE DE TRÁMITES
+        // COMANDOS DE PUNTO (.) PARA VENDEDORES Y CLIENTES
+        // -----------------------------------------------------------------
+        
+        // 🌸 MANUAL DE BOLSILLO (EXCLUSIVO VENDEDORES / ADMINS)
+        if (textoMensaje.toLowerCase() === '.jinni') {
+            if (!tienePermisoOperativo) return; // Solo tú y tus vendedores lo pueden ver
+            
+            const listaComandos = `🌸 *LISTA MAESTRA DE COMANDOS - JINNI* 🌸
+
+👑 *Súper Admins:*
+• /mantenimiento, /apagado, /descanso, /prendido
+• /addvendedor, /delvendedor (cita un msj o ID)
+
+⚙️ *Gestión de Grupos:*
+• /activargrupo, /desactivargrupo
+• /setgrupo [alias] (Para envíos rápidos)
+
+🔔 *Notificaciones:*
+• /addnotis, /delnotis (cita un msj)
+• /vernotis
+
+💰 *Ventas y Operaciones:*
+• /precio [tramite] [monto] (Ej. /precio acta 15)
+• /saldo [monto] (cita un msj, Ej. /saldo 100)
+• /id (cita un msj para ver ID oculto)
+• /r [alias] [@usuario] (reenvía un archivo listo)
+• .setpago [Datos bancarios] (o /setpago)
+• /setstock [Mensaje de inventario]
+
+👢 *Moderación y Anuncios:*
+• .kick (cita un msj o ID para expulsar)
+• .n [mensaje] (Etiqueta invisible a todos)
+
+📦 *Para Clientes:*
+• .stock (Muestra inventario)
+• .pago (Muestra datos bancarios)
+• .receta [datos]
+• .cescolar [datos]
+• .cmedico [datos]
+• Actas: CURP + Num/Código (Ej. ABCD... 5)
+• SAT: RFC + IDCIF + 9
+• RFC Clon: RFC + 1`;
+
+            await msg.reply(listaComandos);
+            return;
+        }
+
+        // 💳 CONFIGURAR DATOS DE PAGO (VENDEDOR)
+        if (textoMensaje.toLowerCase().startsWith('.setpago ') || textoMensaje.toLowerCase().startsWith('/setpago ')) {
+            if (!tienePermisoOperativo) return;
+            if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
+
+            const nuevoPago = textoMensaje.substring(textoMensaje.indexOf(' ') + 1).trim();
+            if (!configSistema.pagosGrupos) configSistema.pagosGrupos = {};
+            configSistema.pagosGrupos[chatId] = nuevoPago;
+            guardarConfig(configSistema);
+            await msg.reply('✅ *Datos de pago guardados.*\nCuando los clientes escriban `.pago`, verán esta información.');
+            return;
+        }
+
+        // 💳 MOSTRAR DATOS DE PAGO (CLIENTES)
+        if (textoMensaje.toLowerCase() === '.pago') {
+            if (esGrupo && !esGrupoAutorizado) return;
+            const msjPago = (configSistema.pagosGrupos && configSistema.pagosGrupos[chatId]) ? configSistema.pagosGrupos[chatId] : 'ℹ️ El vendedor aún no ha configurado sus datos de pago en este grupo.';
+            await msg.reply(msjPago).catch(()=>null);
+            return;
+        }
+
+        // 👢 EXPULSIÓN DE USUARIOS
+        if (textoMensaje.toLowerCase().startsWith('.kick')) {
+            if (!tienePermisoOperativo) return;
+            if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
+            
+            let targetKick = await extraerIdUsuarioCitado(msg);
+            if (!targetKick) {
+                const args = textoMensaje.split(' ');
+                if (args.length > 1) targetKick = args[1].includes('@') ? args[1] : `${args[1]}@c.us`;
+            }
+
+            if (!targetKick) return await msg.reply('⚠️ Etiqueta o cita el mensaje del usuario que deseas expulsar.');
+
+            try {
+                const chat = await msg.getChat();
+                await chat.removeParticipants([targetKick]);
+                await msg.reply('👢 *¡Usuario expulsado del grupo con éxito!*');
+            } catch (error) {
+                await msg.reply('⚠️ No pude expulsarlo. Verifica que soy Administrador del grupo.');
+            }
+            return;
+        }
+
+        // 📢 NOTIFICACIÓN GENERAL INVISIBLE
+        if (textoMensaje.toLowerCase().startsWith('.n ')) {
+            if (!tienePermisoOperativo) return;
+            if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
+
+            const anuncio = textoMensaje.slice(3).trim();
+            if (!anuncio) return await msg.reply('⚠️ Escribe el mensaje que deseas anunciar.');
+
+            try {
+                const chat = await msg.getChat();
+                let mentions = [];
+                for (let participant of chat.participants) {
+                    mentions.push(participant.id._serialized);
+                }
+                await chat.sendMessage(`📢 *ANUNCIO IMPORTANTE:*\n\n${anuncio}`, { mentions });
+            } catch (e) {
+                console.log('Fallo al enviar anuncio:', e);
+            }
+            return;
+        }
+
+        // 📦 CONSULTA DE INVENTARIO
+        if (textoMensaje.toLowerCase() === '.stock') {
+            if (esGrupo && !esGrupoAutorizado) return;
+            const msjStock = (configSistema.stockGrupos && configSistema.stockGrupos[chatId]) ? configSistema.stockGrupos[chatId] : 'ℹ️ No hay información de stock establecida por el momento.';
+            await msg.reply(msjStock).catch(()=>null);
+            return;
+        }
+
+
+        // -----------------------------------------------------------------
+        // PROCESAMIENTO MÚLTIPLE DE TRÁMITES (ACTAS, SAT, RFC Y NUEVOS)
         // -----------------------------------------------------------------
         if (esGrupo && !esGrupoAutorizado) return;
 
-        if (!textoMensaje.startsWith('/')) {
+        // Validamos que no sea un comando con barra ni los comandos especiales con punto
+        if (!textoMensaje.startsWith('/') && !textoMensaje.startsWith('.kick') && !textoMensaje.startsWith('.n ') && !textoMensaje.toLowerCase().startsWith('.setpago') && textoMensaje.toLowerCase() !== '.stock' && textoMensaje.toLowerCase() !== '.pago' && textoMensaje.toLowerCase() !== '.jinni') {
             const lineas = textoMensaje.split('\n').map(l => l.trim()).filter(l => l !== "");
             
             const regexActas = /^([A-Z]{4}\d{6}[A-Z]{6}[A-Z0-9]\d)\s([5-8]|NF|MF|DF|D0)$/i;
@@ -523,11 +691,16 @@ bot.on('message_create', async (msg) => {
             let pDivD0 = configSistema.precios?.[chatId]?.divorcio_d0 ?? PRECIO_DIVORCIO_D0;
             let pSat = configSistema.precios?.[chatId]?.sat ?? PRECIO_SAT;
             let pRfc = configSistema.precios?.[chatId]?.rfcclon ?? PRECIO_RFCCLON;
+            // Precios de nuevos servicios
+            let pReceta = configSistema.precios?.[chatId]?.receta ?? PRECIO_RECETA;
+            let pCEscolar = configSistema.precios?.[chatId]?.cescolar ?? PRECIO_CESCOLAR;
+            let pCMedico = configSistema.precios?.[chatId]?.cmedico ?? PRECIO_CMEDICO;
 
             for (const linea of lineas) {
                 const matchActa = linea.match(regexActas);
                 const matchSat = linea.match(regexSat);
                 const matchRfcClon = linea.match(regexRfcClon);
+                const lineaLow = linea.toLowerCase();
 
                 if (matchActa) {
                     const codigo = matchActa[2].toUpperCase();
@@ -547,6 +720,17 @@ bot.on('message_create', async (msg) => {
                     tramitesAProcesar.push({ tipo: 'sat', identificador: `RFC: ${matchSat[1].toUpperCase()} | IDCIF: ${matchSat[2].toUpperCase()}`, codigo: matchSat[3], costo: pSat, nombreServicio: "Constancia Fiscal" });
                 } else if (matchRfcClon) {
                     tramitesAProcesar.push({ tipo: 'rfcclon', identificador: `RFC CLON: ${matchRfcClon[1].toUpperCase()}`, codigo: matchRfcClon[2], costo: pRfc, nombreServicio: "RFC Clon" });
+                } 
+                // DETECCIÓN DE NUEVOS TRÁMITES CON PREFIJO (Con o sin datos extra)
+                else if (lineaLow.startsWith('.receta')) {
+                    const datosExtra = linea.slice(7).trim() || "Sin datos extras";
+                    tramitesAProcesar.push({ tipo: 'receta', identificador: `📝 Datos: ${datosExtra}`, codigo: "REC", costo: pReceta, nombreServicio: "Receta Médica" });
+                } else if (lineaLow.startsWith('.cescolar')) {
+                    const datosExtra = linea.slice(9).trim() || "Sin datos extras";
+                    tramitesAProcesar.push({ tipo: 'cescolar', identificador: `🎓 Datos: ${datosExtra}`, codigo: "ESC", costo: pCEscolar, nombreServicio: "Certificado Escolar" });
+                } else if (lineaLow.startsWith('.cmedico')) {
+                    const datosExtra = linea.slice(8).trim() || "Sin datos extras";
+                    tramitesAProcesar.push({ tipo: 'cmedico', identificador: `🏥 Datos: ${datosExtra}`, codigo: "MED", costo: pCMedico, nombreServicio: "Certificado Médico" });
                 }
             }
 
@@ -577,7 +761,7 @@ bot.on('message_create', async (msg) => {
                         saldoDisponible -= tramite.costo;
                         exitosos.push(tramite);
 
-                        const alertaPrivada = `🔔 *TRÁMITE SOLICITADO*\n👤 *ID:* \`${cliente}\`\n🏷️ *Grupo:* \`${aliasDelGrupo}\`\n📋 *Servicio:* ${tramite.nombreServicio}\n🔑 *Datos:* \`${tramite.identificador}\``;
+                        const alertaPrivada = `🔔 *TRÁMITE SOLICITADO*\n👤 *ID:* \`${cliente}\`\n🏷️ *Grupo:* \`${aliasDelGrupo}\`\n📋 *Servicio:* ${tramite.nombreServicio}\n🔑 *Identificador:* \`${tramite.identificador}\``;
                         
                         let destinatarios = new Set([...SÚPER_ADMINS_NATOS]);
                         if (configSistema.notificadoresGrupos && configSistema.notificadoresGrupos[chatId]) {
