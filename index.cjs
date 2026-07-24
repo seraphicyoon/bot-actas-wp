@@ -2,10 +2,18 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
+const http = require('http'); // 🌐 Módulo añadido para el servidor fantasma
 
 process.on('unhandledRejection', (reason, promise) => {
     console.log('⚠️ Error de red bloqueado:', reason);
 });
+
+// 🌐 SERVIDOR FANTASMA PARA ENGAÑAR A RAILWAY
+const port = process.env.PORT || 3000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot activo');
+}).listen(port);
 
 // --- TUS CREDENCIALES DE SÚPER ADMINISTRADORA ---
 const SÚPER_ADMINS_NATOS = [
@@ -33,9 +41,10 @@ const PRECIO_RECETA = 15;
 const PRECIO_CESCOLAR = 15;
 const PRECIO_CMEDICO = 15;
 
-// --- BASES DE DATOS ---
-const PATH_SALDOS = path.join(__dirname, 'saldos.json');
-const PATH_CONFIG = path.join(__dirname, 'config.json');
+// --- BASES DE DATOS (CON MEMORIA EN RAILWAY) ---
+const CARPETA_DATOS = process.env.RAILWAY_VOLUME_MOUNT_PATH || __dirname;
+const PATH_SALDOS = path.join(CARPETA_DATOS, 'saldos.json');
+const PATH_CONFIG = path.join(CARPETA_DATOS, 'config.json');
 
 function cargarSaldos() {
     try {
@@ -115,7 +124,11 @@ let saldosUsuarios = cargarSaldos();
 let configSistema = cargarConfig();
 
 const bot = new Client({
-    authStrategy: new LocalAuth({ clientId: "sesion-actas" }),
+    // 👇 MEMORIA CONECTADA A RAILWAY 👇
+    authStrategy: new LocalAuth({ 
+        clientId: "sesion-actas",
+        dataPath: CARPETA_DATOS 
+    }),
     puppeteer: {
         headless: true,
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
@@ -131,15 +144,23 @@ const bot = new Client({
 
 bot.on('qr', (qr) => {
     qrcode.generate(qr, { small: true });
-    console.log('✨ Escanea el código QR ✨');
+    console.log('✨ Escanea el código QR ✨ (Generando código de 8 dígitos...)');
+    
+    // 👇 EL CÓDIGO APARECE AQUÍ PARA QUE NO SE PIERDA 👇
+    if (NUMERO_TELEFONO && NUMERO_TELEFONO.length > 8) {
+        setTimeout(async () => {
+            try {
+                const pairingCode = await bot.requestPairingCode(NUMERO_TELEFONO);
+                console.log(`\n=========================================`);
+                console.log(`🔢 TU CÓDIGO ES: ${pairingCode}`);
+                console.log(`=========================================\n`);
+            } catch (e) {}
+        }, 4000);
+    }
 });
 
 bot.on('ready', () => {
     console.log('🚀 ¡Bot en línea en la nube con sistema extendido!');
-});
-
-bot.on('code', async (code) => {
-    console.log(`🔢 CÓDIGO DE VINCULACIÓN: ${code}`);
 });
 
 // 🔔 EVENTO AUTOMÁTICO: AVISAR CUANDO ABREN O CIERRAN EL GRUPO
@@ -162,17 +183,6 @@ bot.on('group_update', async (notification) => {
         }
     } catch (error) {
         console.log('Error en evento de grupo:', error);
-    }
-});
-
-bot.initialize().then(async () => {
-    if (NUMERO_TELEFONO && NUMERO_TELEFONO.length > 8) {
-        try {
-            setTimeout(async () => {
-                const pairingCode = await bot.requestPairingCode(NUMERO_TELEFONO);
-                console.log(`🔢 CÓDIGO SOLICITADO PARA ${NUMERO_TELEFONO}: ${pairingCode}`);
-            }, 6000);
-        } catch (e) {}
     }
 });
 
@@ -574,13 +584,10 @@ bot.on('message_create', async (msg) => {
 • .setpago [Datos bancarios] (o /setpago)
 • /setstock [Mensaje de inventario]
 
-👢 *Moderación y Anuncios:*
-• .kick (cita un msj o ID para expulsar)
-• .n [mensaje] (Etiqueta invisible a todos)
-
 📦 *Para Clientes:*
 • .stock (Muestra inventario)
 • .pago (Muestra datos bancarios)
+• .versaldo (Muestra tu saldo actual)
 • .receta [datos]
 • .cescolar [datos]
 • .cmedico [datos]
@@ -613,47 +620,13 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // 👢 EXPULSIÓN DE USUARIOS
-        if (textoMensaje.toLowerCase().startsWith('.kick')) {
-            if (!tienePermisoOperativo) return;
-            if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
-            
-            let targetKick = await extraerIdUsuarioCitado(msg);
-            if (!targetKick) {
-                const args = textoMensaje.split(' ');
-                if (args.length > 1) targetKick = args[1].includes('@') ? args[1] : `${args[1]}@c.us`;
-            }
-
-            if (!targetKick) return await msg.reply('⚠️ Etiqueta o cita el mensaje del usuario que deseas expulsar.');
-
-            try {
-                const chat = await msg.getChat();
-                await chat.removeParticipants([targetKick]);
-                await msg.reply('👢 *¡Usuario expulsado del grupo con éxito!*');
-            } catch (error) {
-                await msg.reply('⚠️ No pude expulsarlo. Verifica que soy Administrador del grupo.');
-            }
-            return;
-        }
-
-        // 📢 NOTIFICACIÓN GENERAL INVISIBLE
-        if (textoMensaje.toLowerCase().startsWith('.n ')) {
-            if (!tienePermisoOperativo) return;
-            if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
-
-            const anuncio = textoMensaje.slice(3).trim();
-            if (!anuncio) return await msg.reply('⚠️ Escribe el mensaje que deseas anunciar.');
-
-            try {
-                const chat = await msg.getChat();
-                let mentions = [];
-                for (let participant of chat.participants) {
-                    mentions.push(participant.id._serialized);
-                }
-                await chat.sendMessage(`📢 *ANUNCIO IMPORTANTE:*\n\n${anuncio}`, { mentions });
-            } catch (e) {
-                console.log('Fallo al enviar anuncio:', e);
-            }
+        // 🔋 CONSULTA DE SALDO (CLIENTES)
+        if (textoMensaje.toLowerCase() === '.versaldo') {
+            if (esGrupo && !esGrupoAutorizado) return;
+            const cliente = msg.author || msg.from;
+            saldosUsuarios = cargarSaldos();
+            const saldoActual = (saldosUsuarios[chatId] && saldosUsuarios[chatId][cliente]) ? saldosUsuarios[chatId][cliente] : 0;
+            await msg.reply(`🔋 *Tu saldo actual es:* $${saldoActual}.00 MXN`).catch(()=>null);
             return;
         }
 
@@ -665,14 +638,13 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-
         // -----------------------------------------------------------------
         // PROCESAMIENTO MÚLTIPLE DE TRÁMITES (ACTAS, SAT, RFC Y NUEVOS)
         // -----------------------------------------------------------------
         if (esGrupo && !esGrupoAutorizado) return;
 
-        // Validamos que no sea un comando con barra ni los comandos especiales con punto
-        if (!textoMensaje.startsWith('/') && !textoMensaje.startsWith('.kick') && !textoMensaje.startsWith('.n ') && !textoMensaje.toLowerCase().startsWith('.setpago') && textoMensaje.toLowerCase() !== '.stock' && textoMensaje.toLowerCase() !== '.pago' && textoMensaje.toLowerCase() !== '.jinni') {
+        // Validamos que no sea un comando especial
+        if (!textoMensaje.startsWith('/') && !textoMensaje.toLowerCase().startsWith('.setpago') && textoMensaje.toLowerCase() !== '.stock' && textoMensaje.toLowerCase() !== '.pago' && textoMensaje.toLowerCase() !== '.jinni' && textoMensaje.toLowerCase() !== '.versaldo') {
             const lineas = textoMensaje.split('\n').map(l => l.trim()).filter(l => l !== "");
             
             const regexActas = /^([A-Z]{4}\d{6}[A-Z]{6}[A-Z0-9]\d)\s([5-8]|NF|MF|DF|D0)$/i;
@@ -721,7 +693,7 @@ bot.on('message_create', async (msg) => {
                 } else if (matchRfcClon) {
                     tramitesAProcesar.push({ tipo: 'rfcclon', identificador: `RFC CLON: ${matchRfcClon[1].toUpperCase()}`, codigo: matchRfcClon[2], costo: pRfc, nombreServicio: "RFC Clon" });
                 } 
-                // DETECCIÓN DE NUEVOS TRÁMITES CON PREFIJO (Con o sin datos extra)
+                // DETECCIÓN DE NUEVOS TRÁMITES CON PREFIJO
                 else if (lineaLow.startsWith('.receta')) {
                     const datosExtra = linea.slice(7).trim() || "Sin datos extras";
                     tramitesAProcesar.push({ tipo: 'receta', identificador: `📝 Datos: ${datosExtra}`, codigo: "REC", costo: pReceta, nombreServicio: "Receta Médica" });
@@ -761,7 +733,7 @@ bot.on('message_create', async (msg) => {
                         saldoDisponible -= tramite.costo;
                         exitosos.push(tramite);
 
-                        const alertaPrivada = `🔔 *TRÁMITE SOLICITADO*\n👤 *ID:* \`${cliente}\`\n🏷️ *Grupo:* \`${aliasDelGrupo}\`\n📋 *Servicio:* ${tramite.nombreServicio}\n🔑 *Identificador:* \`${tramite.identificador}\``;
+                        const alertaPrivada = `🔔 *TRÁMITE SOLICITADO*\n👤 *ID:* \`${cliente}\`\n🏷️ *Grupo:* \`${aliasDelGrupo}\`\n📋 *Servicio:* ${tramite.nombreServicio}\n🔑 *Identificador:* \`${tramite.identificador}\`\n🔋 *Saldo restante:* $${saldoDisponible}.00`;
                         
                         let destinatarios = new Set([...SÚPER_ADMINS_NATOS]);
                         if (configSistema.notificadoresGrupos && configSistema.notificadoresGrupos[chatId]) {
