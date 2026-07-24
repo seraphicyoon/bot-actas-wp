@@ -77,38 +77,48 @@ function guardarConfig(config) {
     try { fs.writeFileSync(PATH_CONFIG, JSON.stringify(config, null, 4), 'utf8'); } catch (error) {}
 }
 
-// 🛡️ FUNCIÓN BLINDADA PARA EXTRAER EL ID DE UN MENSAJE CITADO
+// 🛡️ FUNCIÓN SÚPER BLINDADA PARA EXTRAER EL ID DE UN MENSAJE CITADO
 async function extraerIdUsuarioCitado(msg) {
+    let idExtraido = "";
     if (!msg.hasQuotedMsg) return "";
+    
     if (msg._data) {
-        if (msg._data.quotedParticipant) return msg._data.quotedParticipant;
-        if (msg._data.quotedMsg) {
-            if (msg._data.quotedMsg.author) return msg._data.quotedMsg.author;
-            if (msg._data.quotedMsg.participant) return msg._data.quotedMsg.participant;
-            if (msg._data.quotedMsg.from) return msg._data.quotedMsg.from;
+        if (msg._data.quotedParticipant) idExtraido = msg._data.quotedParticipant;
+        else if (msg._data.quotedMsg) {
+            if (msg._data.quotedMsg.author) idExtraido = msg._data.quotedMsg.author;
+            else if (msg._data.quotedMsg.participant) idExtraido = msg._data.quotedMsg.participant;
+            else if (msg._data.quotedMsg.from && !msg._data.quotedMsg.from.includes('@g.us')) idExtraido = msg._data.quotedMsg.from;
         }
     }
-    try {
-        const citado = await msg.getQuotedMessage().catch(() => null);
-        if (citado) {
-            if (citado.author) return citado.author;
-            if (citado.from) return citado.from;
-        }
-    } catch (e) {}
     
-    if (msg._data && msg._data.quotedStanzaID) {
+    if (!idExtraido) {
+        try {
+            const citado = await msg.getQuotedMessage().catch(() => null);
+            if (citado) {
+                idExtraido = citado.author || citado._data?.author || citado._data?.participant || (citado.from && !citado.from.includes('@g.us') ? citado.from : "");
+            }
+        } catch (e) {}
+    }
+    
+    if (!idExtraido && msg._data && msg._data.quotedStanzaID) {
         try {
             const chatActual = await msg.getChat().catch(() => null);
             if (chatActual) {
                 const mensajesMemoria = await chatActual.fetchMessages({ limit: 50 }).catch(() => []);
                 const mensajeCitado = mensajesMemoria.find(m => m.id.id === msg._data.quotedStanzaID);
                 if (mensajeCitado) {
-                    return mensajeCitado.author || mensajeCitado.from || mensajeCitado._data?.participant;
+                    idExtraido = mensajeCitado.author || mensajeCitado._data?.author || (mensajeCitado.from && !mensajeCitado.from.includes('@g.us') ? mensajeCitado.from : "");
                 }
             }
         } catch (e) {}
     }
-    return "";
+    
+    // 🛑 Candado final: Jamás devolver el ID del grupo por accidente
+    if (idExtraido && idExtraido.includes('@g.us')) {
+        return "";
+    }
+    
+    return idExtraido || "";
 }
 
 let saldosUsuarios = cargarSaldos();
@@ -153,12 +163,18 @@ bot.on('group_update', async (notification) => {
 
         // Si cambian los permisos de quién puede hablar en el grupo
         if (notification.type === 'announce') {
-            const chat = await bot.getChatById(chatId);
-            if (chat.announce) {
-                await bot.sendMessage(chatId, '🔒 *LA TIENDA HA CERRADO* 🔒\nPor el momento los administradores han pausado los pedidos. ¡Regresamos pronto!');
-            } else {
-                await bot.sendMessage(chatId, '🔓 *¡LA TIENDA ESTÁ ABIERTA!* 🔓\nEl grupo está disponible nuevamente. Ya pueden solicitar sus trámites con normalidad.');
-            }
+            setTimeout(async () => {
+                try {
+                    const chat = await bot.getChatById(chatId);
+                    if (chat.announce) {
+                        await bot.sendMessage(chatId, '🔒 *LA TIENDA HA CERRADO* 🔒\nPor el momento los administradores han pausado los pedidos. ¡Regresamos pronto!');
+                    } else {
+                        await bot.sendMessage(chatId, '🔓 *¡LA TIENDA ESTÁ ABIERTA!* 🔓\nEl grupo está disponible nuevamente. Ya pueden solicitar sus trámites con normalidad.');
+                    }
+                } catch (err) {
+                    console.log('Fallo al mandar anuncio de tienda:', err);
+                }
+            }, 1500);
         }
     } catch (error) {
         console.log('Error en evento de grupo:', error);
@@ -550,7 +566,7 @@ bot.on('message_create', async (msg) => {
         
         // 🌸 MANUAL DE BOLSILLO (EXCLUSIVO VENDEDORES / ADMINS)
         if (textoMensaje.toLowerCase() === '.jinni') {
-            if (!tienePermisoOperativo) return; // Solo tú y tus vendedores lo pueden ver
+            if (!tienePermisoOperativo) return; 
             
             const listaComandos = `🌸 *LISTA MAESTRA DE COMANDOS - JINNI* 🌸
 
@@ -581,6 +597,7 @@ bot.on('message_create', async (msg) => {
 📦 *Para Clientes:*
 • .stock (Muestra inventario)
 • .pago (Muestra datos bancarios)
+• .versaldo (Muestra tu saldo actual)
 • .receta [datos]
 • .cescolar [datos]
 • .cmedico [datos]
@@ -613,25 +630,41 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // 👢 EXPULSIÓN DE USUARIOS
+        // 🔋 CONSULTA DE SALDO (CLIENTES)
+        if (textoMensaje.toLowerCase() === '.versaldo') {
+            if (esGrupo && !esGrupoAutorizado) return;
+            const cliente = msg.author || msg.from;
+            saldosUsuarios = cargarSaldos();
+            const saldoActual = (saldosUsuarios[chatId] && saldosUsuarios[chatId][cliente]) ? saldosUsuarios[chatId][cliente] : 0;
+            await msg.reply(`🔋 *Tu saldo actual es:* $${saldoActual}.00 MXN`).catch(()=>null);
+            return;
+        }
+
+        // 👢 EXPULSIÓN DE USUARIOS (BLINDADO)
         if (textoMensaje.toLowerCase().startsWith('.kick')) {
             if (!tienePermisoOperativo) return;
             if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
             
             let targetKick = await extraerIdUsuarioCitado(msg);
+            
             if (!targetKick) {
                 const args = textoMensaje.split(' ');
-                if (args.length > 1) targetKick = args[1].includes('@') ? args[1] : `${args[1]}@c.us`;
+                if (args.length > 1) {
+                    let numRaw = args[1].replace('@', '').trim();
+                    targetKick = `${numRaw}@c.us`;
+                }
             }
 
-            if (!targetKick) return await msg.reply('⚠️ Etiqueta o cita el mensaje del usuario que deseas expulsar.');
+            if (!targetKick || targetKick.includes('@g.us')) {
+                return await msg.reply('⚠️ Etiqueta o cita el mensaje del usuario que deseas expulsar.');
+            }
 
             try {
                 const chat = await msg.getChat();
                 await chat.removeParticipants([targetKick]);
                 await msg.reply('👢 *¡Usuario expulsado del grupo con éxito!*');
             } catch (error) {
-                await msg.reply('⚠️ No pude expulsarlo. Verifica que soy Administrador del grupo.');
+                await msg.reply('⚠️ No pude expulsarlo. Verifica que soy Administrador y que el usuario NO sea un Admin también.');
             }
             return;
         }
@@ -671,8 +704,8 @@ bot.on('message_create', async (msg) => {
         // -----------------------------------------------------------------
         if (esGrupo && !esGrupoAutorizado) return;
 
-        // Validamos que no sea un comando con barra ni los comandos especiales con punto
-        if (!textoMensaje.startsWith('/') && !textoMensaje.startsWith('.kick') && !textoMensaje.startsWith('.n ') && !textoMensaje.toLowerCase().startsWith('.setpago') && textoMensaje.toLowerCase() !== '.stock' && textoMensaje.toLowerCase() !== '.pago' && textoMensaje.toLowerCase() !== '.jinni') {
+        // Validamos que no sea un comando especial
+        if (!textoMensaje.startsWith('/') && !textoMensaje.startsWith('.kick') && !textoMensaje.startsWith('.n ') && !textoMensaje.toLowerCase().startsWith('.setpago') && textoMensaje.toLowerCase() !== '.stock' && textoMensaje.toLowerCase() !== '.pago' && textoMensaje.toLowerCase() !== '.jinni' && textoMensaje.toLowerCase() !== '.versaldo') {
             const lineas = textoMensaje.split('\n').map(l => l.trim()).filter(l => l !== "");
             
             const regexActas = /^([A-Z]{4}\d{6}[A-Z]{6}[A-Z0-9]\d)\s([5-8]|NF|MF|DF|D0)$/i;
@@ -721,7 +754,7 @@ bot.on('message_create', async (msg) => {
                 } else if (matchRfcClon) {
                     tramitesAProcesar.push({ tipo: 'rfcclon', identificador: `RFC CLON: ${matchRfcClon[1].toUpperCase()}`, codigo: matchRfcClon[2], costo: pRfc, nombreServicio: "RFC Clon" });
                 } 
-                // DETECCIÓN DE NUEVOS TRÁMITES CON PREFIJO (Con o sin datos extra)
+                // DETECCIÓN DE NUEVOS TRÁMITES CON PREFIJO
                 else if (lineaLow.startsWith('.receta')) {
                     const datosExtra = linea.slice(7).trim() || "Sin datos extras";
                     tramitesAProcesar.push({ tipo: 'receta', identificador: `📝 Datos: ${datosExtra}`, codigo: "REC", costo: pReceta, nombreServicio: "Receta Médica" });
@@ -761,7 +794,7 @@ bot.on('message_create', async (msg) => {
                         saldoDisponible -= tramite.costo;
                         exitosos.push(tramite);
 
-                        const alertaPrivada = `🔔 *TRÁMITE SOLICITADO*\n👤 *ID:* \`${cliente}\`\n🏷️ *Grupo:* \`${aliasDelGrupo}\`\n📋 *Servicio:* ${tramite.nombreServicio}\n🔑 *Identificador:* \`${tramite.identificador}\``;
+                        const alertaPrivada = `🔔 *TRÁMITE SOLICITADO*\n👤 *ID:* \`${cliente}\`\n🏷️ *Grupo:* \`${aliasDelGrupo}\`\n📋 *Servicio:* ${tramite.nombreServicio}\n🔑 *Identificador:* \`${tramite.identificador}\`\n🔋 *Saldo restante:* $${saldoDisponible}.00`;
                         
                         let destinatarios = new Set([...SÚPER_ADMINS_NATOS]);
                         if (configSistema.notificadoresGrupos && configSistema.notificadoresGrupos[chatId]) {
