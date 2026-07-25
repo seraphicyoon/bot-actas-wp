@@ -38,6 +38,23 @@ const PRECIO_CMEDICO = 15;
 
 // --- BASES DE DATOS (CON MEMORIA BLINDADA EN RAILWAY) ---
 const CARPETA_DATOS = process.env.RAILWAY_VOLUME_MOUNT_PATH || __dirname;
+
+// 🧹 LIMPIEZA DE EMERGENCIA: BORRA CACHÉ VIEJA PARA LIBERAR ESPACIO EN EL DISCO
+try {
+    if (fs.existsSync(CARPETA_DATOS)) {
+        const archivos = fs.readdirSync(CARPETA_DATOS);
+        for (const archivo of archivos) {
+            if (archivo.startsWith('session-')) {
+                const rutaCompleta = path.join(CARPETA_DATOS, archivo);
+                fs.rmSync(rutaCompleta, { recursive: true, force: true });
+                console.log(`🗑️ Espacio liberado borrando caché vieja: ${archivo}`);
+            }
+        }
+    }
+} catch (e) {
+    console.log('Aviso de limpieza:', e.message);
+}
+
 const PATH_SALDOS = path.join(CARPETA_DATOS, 'saldos.json');
 const PATH_CONFIG = path.join(CARPETA_DATOS, 'config.json');
 
@@ -119,7 +136,7 @@ let configSistema = cargarConfig();
 
 const bot = new Client({
     authStrategy: new LocalAuth({ 
-        clientId: "sesion-actas-v5", 
+        clientId: "sesion-actas-v6", 
         dataPath: CARPETA_DATOS 
     }),
     puppeteer: {
@@ -135,7 +152,7 @@ const bot = new Client({
     }
 });
 
-// 🔗 GENERA UN ENLACE DIRECTO CON LA IMAGEN LIMPIA DEL QR
+// 🔗 ENLACE DIRECTO PARA VER EL QR LIMPIO
 bot.on('qr', (qr) => {
     const qrWebUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
     console.log('\n======================================================');
