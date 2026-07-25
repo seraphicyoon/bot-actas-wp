@@ -39,17 +39,6 @@ const PRECIO_CMEDICO = 15;
 // --- BASES DE DATOS (CON MEMORIA BLINDADA EN RAILWAY) ---
 const CARPETA_DATOS = process.env.RAILWAY_VOLUME_MOUNT_PATH || __dirname;
 
-// 🗑️ LIMPIEZA TOTAL DE LA SESIÓN CORRUPTA ANTERIOR PARA EVITAR CONGELAMIENTOS
-try {
-    const carpetaSesionVieja = path.join(CARPETA_DATOS, 'session-sesion-actas-v7');
-    if (fs.existsSync(carpetaSesionVieja)) {
-        fs.rmSync(carpetaSesionVieja, { recursive: true, force: true });
-        console.log('🗑️ Sesión anterior corrupta eliminada por completo.');
-    }
-} catch (e) {
-    console.log('Aviso de limpieza:', e.message);
-}
-
 const PATH_SALDOS = path.join(CARPETA_DATOS, 'saldos.json');
 const PATH_CONFIG = path.join(CARPETA_DATOS, 'config.json');
 
@@ -145,7 +134,7 @@ let configSistema = cargarConfig();
 
 const bot = new Client({
     authStrategy: new LocalAuth({ 
-        clientId: "sesion-actas-v8", 
+        clientId: "sesion-actas-final", // Sesión fija y permanente para que nunca más se borre
         dataPath: CARPETA_DATOS 
     }),
     puppeteer: {
@@ -165,13 +154,13 @@ const bot = new Client({
 bot.on('qr', (qr) => {
     const qrWebUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
     console.log('\n======================================================');
-    console.log('🔗 ABRE ESTE ENLACE EN TU NAVEGADOR PARA VER EL QR:');
+    console.log('🔗 ABRE ESTE ENLACE EN TU NAVEGADOR PARA ESCANEAR EL QR:');
     console.log(qrWebUrl);
     console.log('======================================================\n');
 });
 
 bot.on('ready', () => {
-    console.log('🚀 ¡Bot en línea y respondiendo al 100%!');
+    console.log('🚀 ¡Bot en línea, conectado y respondiendo al 100%!');
 });
 
 bot.on('group_update', async (notification) => {
