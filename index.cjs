@@ -39,21 +39,18 @@ const PRECIO_CMEDICO = 15;
 // --- BASES DE DATOS (CON MEMORIA BLINDADA EN RAILWAY) ---
 const CARPETA_DATOS = process.env.RAILWAY_VOLUME_MOUNT_PATH || __dirname;
 
-// 🧹 LIMPIEZA DE EMERGENCIA: BORRA CACHÉ VIEJA PARA LIBERAR ESPACIO EN EL DISCO
+// 🧹 LIMPIEZA DE CACHÉ VIEJA
 try {
     if (fs.existsSync(CARPETA_DATOS)) {
         const archivos = fs.readdirSync(CARPETA_DATOS);
         for (const archivo of archivos) {
-            if (archivo.startsWith('session-')) {
+            if (archivo.startsWith('session-') && archivo !== 'session-sesion-actas-v7') {
                 const rutaCompleta = path.join(CARPETA_DATOS, archivo);
                 fs.rmSync(rutaCompleta, { recursive: true, force: true });
-                console.log(`🗑️ Espacio liberado borrando caché vieja: ${archivo}`);
             }
         }
     }
-} catch (e) {
-    console.log('Aviso de limpieza:', e.message);
-}
+} catch (e) {}
 
 const PATH_SALDOS = path.join(CARPETA_DATOS, 'saldos.json');
 const PATH_CONFIG = path.join(CARPETA_DATOS, 'config.json');
@@ -98,6 +95,21 @@ function guardarConfig(config) {
     try { fs.writeFileSync(PATH_CONFIG, JSON.stringify(config, null, 4), 'utf8'); } catch (error) {}
 }
 
+// 🛡️ FUNCIÓN DE RESPUESTA BLINDADA (EVITA QUE EL BOT SE QUEDE MUDO)
+async function responder(msg, texto) {
+    try {
+        if (msg.fromMe) {
+            await bot.sendMessage(msg.from, texto);
+        } else {
+            await msg.reply(texto);
+        }
+    } catch (e) {
+        try {
+            await bot.sendMessage(msg.from, texto);
+        } catch (err) {}
+    }
+}
+
 async function extraerIdUsuarioCitado(msg) {
     if (!msg.hasQuotedMsg) return "";
     if (msg._data) {
@@ -136,7 +148,7 @@ let configSistema = cargarConfig();
 
 const bot = new Client({
     authStrategy: new LocalAuth({ 
-        clientId: "sesion-actas-v6", 
+        clientId: "sesion-actas-v7", 
         dataPath: CARPETA_DATOS 
     }),
     puppeteer: {
@@ -152,17 +164,8 @@ const bot = new Client({
     }
 });
 
-// 🔗 ENLACE DIRECTO PARA VER EL QR LIMPIO
-bot.on('qr', (qr) => {
-    const qrWebUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
-    console.log('\n======================================================');
-    console.log('🔗 ABRE ESTE ENLACE EN TU NAVEGADOR PARA VER EL QR:');
-    console.log(qrWebUrl);
-    console.log('======================================================\n');
-});
-
 bot.on('ready', () => {
-    console.log('🚀 ¡Bot en línea en la nube con sistema extendido!');
+    console.log('🚀 ¡Bot en línea y respondiendo al 100%!');
 });
 
 bot.on('group_update', async (notification) => {
@@ -181,9 +184,7 @@ bot.on('group_update', async (notification) => {
                 await bot.sendMessage(chatId, '🔓 *¡LA TIENDA ESTÁ ABIERTA!* 🔓\nEl grupo está disponible nuevamente. Ya pueden solicitar sus trámites con normalidad.');
             }
         }
-    } catch (error) {
-        console.log('Error en evento de grupo:', error);
-    }
+    } catch (error) {}
 });
 
 bot.on('message_create', async (msg) => {
@@ -218,7 +219,7 @@ bot.on('message_create', async (msg) => {
                 for (let grupoId of configSistema.gruposAutorizados) {
                     await bot.sendMessage(grupoId, `⚠️ *BOT EN MANTENIMIENTO* ⚠️`).catch(()=>null);
                 }
-                await msg.reply('⚙️ Apagado.'); process.exit(0);
+                await responder(msg, '⚙️ Apagado.'); process.exit(0);
             }
 
             if (textoMensaje.toLowerCase() === '/apagado' || textoMensaje.toLowerCase() === '/descanso') {
@@ -226,7 +227,7 @@ bot.on('message_create', async (msg) => {
                 for (let grupoId of configSistema.gruposAutorizados) {
                     await bot.sendMessage(grupoId, `😴 *¡HORA DE DESCANSAR!* 😴`).catch(()=>null);
                 }
-                await msg.reply('💤 Apagado.'); process.exit(0);
+                await responder(msg, '💤 Apagado.'); process.exit(0);
             }
 
             if (textoMensaje.toLowerCase() === '/prendido') {
@@ -234,7 +235,7 @@ bot.on('message_create', async (msg) => {
                 for (let grupoId of configSistema.gruposAutorizados) {
                     await bot.sendMessage(grupoId, `🚀 *¡SISTEMA EN LÍNEA!* 🚀`).catch(()=>null);
                 }
-                await msg.reply('✅ Encendido.');
+                await responder(msg, '✅ Encendido.');
             }
 
             if (textoMensaje.toLowerCase().startsWith('/addvendedor')) {
@@ -245,14 +246,14 @@ bot.on('message_create', async (msg) => {
                     if (args.length > 1) nuevoVendedor = args[1].includes('@') ? args[1] : `${args[1]}@c.us`;
                 }
 
-                if (!nuevoVendedor) return await msg.reply('⚠️ Debes responder al mensaje del usuario o escribir su ID.');
+                if (!nuevoVendedor) return await responder(msg, '⚠️ Debes responder al mensaje del usuario o escribir su ID.');
 
                 if (!configSistema.vendedores.includes(nuevoVendedor)) {
                     configSistema.vendedores.push(nuevoVendedor);
                     guardarConfig(configSistema);
-                    await msg.reply(`✅ *Vendedor Registrado!*\nEl ID \`${nuevoVendedor}\` ahora puede dar saldo.`);
+                    await responder(msg, `✅ *Vendedor Registrado!*\nEl ID \`${nuevoVendedor}\` ahora puede dar saldo.`);
                 } else {
-                    await msg.reply('⚠️ Ese usuario ya es vendedor.');
+                    await responder(msg, '⚠️ Ese usuario ya es vendedor.');
                 }
                 return;
             }
@@ -265,16 +266,16 @@ bot.on('message_create', async (msg) => {
                     if (args.length > 1) vendedorBye = args[1].includes('@') ? args[1] : `${args[1]}@c.us`;
                 }
 
-                if (!vendedorBye) return await msg.reply('⚠️ Falta ID.');
+                if (!vendedorBye) return await responder(msg, '⚠️ Falta ID.');
                 configSistema.vendedores = configSistema.vendedores.filter(id => id !== vendedorBye);
                 guardarConfig(configSistema);
-                await msg.reply(`❌ *Vendedor Eliminado!*`);
+                await responder(msg, `❌ *Vendedor Eliminado!*`);
                 return;
             }
 
             if (textoMensaje.toLowerCase() === '/activargrupo') {
-                if (!esGrupo) return await msg.reply('⚠️ Solo en grupos.');
-                if (!deMiNumero && !esAdminDelGrupo) return await msg.reply('⚠️ No tienes permisos de administración.');
+                if (!esGrupo) return await responder(msg, '⚠️ Solo en grupos.');
+                if (!deMiNumero && !esAdminDelGrupo) return await responder(msg, '⚠️ No tienes permisos de administración.');
                 
                 if (!configSistema.gruposAutorizados.includes(chatId)) {
                     configSistema.gruposAutorizados.push(chatId);
@@ -288,9 +289,9 @@ bot.on('message_create', async (msg) => {
                     } catch (e) {}
 
                     guardarConfig(configSistema);
-                    await msg.reply('✅ *¡Grupo Activado con éxito!*');
+                    await responder(msg, '✅ *¡Grupo Activado con éxito!*');
                 } else {
-                    await msg.reply('⚠️ Este grupo ya estaba activo.');
+                    await responder(msg, '⚠️ Este grupo ya estaba activo.');
                 }
                 return;
             }
@@ -302,27 +303,27 @@ bot.on('message_create', async (msg) => {
                 if (configSistema.propietariosGrupos) delete configSistema.propietariosGrupos[chatId];
                 if (configSistema.notificadoresGrupos) delete configSistema.notificadoresGrupos[chatId];
                 guardarConfig(configSistema);
-                await msg.reply('❌ *Grupo Desactivado y limpio.*');
+                await responder(msg, '❌ *Grupo Desactivado y limpio.*');
                 return;
             }
 
             if (textoMensaje.toLowerCase().startsWith('/setgrupo ')) {
-                if (!esGrupo) return await msg.reply('⚠️ Úsalo en el grupo.');
-                if (!deMiNumero && !esAdminDelGrupo) return await msg.reply('⚠️ No tienes permisos.');
+                if (!esGrupo) return await responder(msg, '⚠️ Úsalo en el grupo.');
+                if (!deMiNumero && !esAdminDelGrupo) return await responder(msg, '⚠️ No tienes permisos.');
                 
                 const argumentos = textoMensaje.split(' ').filter(arg => arg.trim() !== "");
-                if (argumentos.length < 2) return await msg.reply('⚠️ Uso: `/setgrupo [alias]`');
+                if (argumentos.length < 2) return await responder(msg, '⚠️ Uso: `/setgrupo [alias]`');
                 
                 const aliasNuevo = argumentos[1].toLowerCase();
                 configSistema.gruposDestino[aliasNuevo] = chatId;
                 guardarConfig(configSistema);
-                await msg.reply(`✅ *Enlace Exitoso!* Alias: *${aliasNuevo}*`);
+                await responder(msg, `✅ *Enlace Exitoso!* Alias: *${aliasNuevo}*`);
                 return;
             }
 
             if (textoMensaje.toLowerCase() === '/addnotis') {
-                if (!esGrupo) return await msg.reply('⚠️ Úsalo dentro del grupo.');
-                if (!deMiNumero && !esDuenioDelGrupo && !esAdminDelGrupo) return await msg.reply('⚠️ No tienes permisos.');
+                if (!esGrupo) return await responder(msg, '⚠️ Úsalo dentro del grupo.');
+                if (!deMiNumero && !esDuenioDelGrupo && !esAdminDelGrupo) return await responder(msg, '⚠️ No tienes permisos.');
 
                 let targetNoti = await extraerIdUsuarioCitado(msg);
                 if (!targetNoti) targetNoti = senderId;
@@ -333,16 +334,16 @@ bot.on('message_create', async (msg) => {
                 if (!configSistema.notificadoresGrupos[chatId].includes(targetNoti)) {
                     configSistema.notificadoresGrupos[chatId].push(targetNoti);
                     guardarConfig(configSistema);
-                    await msg.reply(`✅ *Notificador Agregado*\nEl usuario \`${targetNoti}\` ahora recibirá las alertas de este grupo.`);
+                    await responder(msg, `✅ *Notificador Agregado*\nEl usuario \`${targetNoti}\` ahora recibirá las alertas de este grupo.`);
                 } else {
-                    await msg.reply('⚠️ Este usuario ya está en la lista de notificaciones de este grupo.');
+                    await responder(msg, '⚠️ Este usuario ya está en la lista de notificaciones de este grupo.');
                 }
                 return;
             }
 
             if (textoMensaje.toLowerCase() === '/delnotis') {
-                if (!esGrupo) return await msg.reply('⚠️ Úsalo dentro del grupo.');
-                if (!deMiNumero && !esDuenioDelGrupo && !esAdminDelGrupo) return await msg.reply('⚠️ No tienes permisos.');
+                if (!esGrupo) return await responder(msg, '⚠️ Úsalo dentro del grupo.');
+                if (!deMiNumero && !esDuenioDelGrupo && !esAdminDelGrupo) return await responder(msg, '⚠️ No tienes permisos.');
 
                 let targetNoti = await extraerIdUsuarioCitado(msg);
                 if (!targetNoti) targetNoti = senderId;
@@ -350,9 +351,9 @@ bot.on('message_create', async (msg) => {
                 if (configSistema.notificadoresGrupos && configSistema.notificadoresGrupos[chatId]) {
                     configSistema.notificadoresGrupos[chatId] = configSistema.notificadoresGrupos[chatId].filter(id => id !== targetNoti);
                     guardarConfig(configSistema);
-                    await msg.reply(`❌ *Notificador Removido*\nSe eliminó a \`${targetNoti}\` de las alertas de este grupo.`);
+                    await responder(msg, `❌ *Notificador Removido*\nSe eliminó a \`${targetNoti}\` de las alertas de este grupo.`);
                 } else {
-                    await msg.reply('⚠️ No hay notificadores registrados en este grupo.');
+                    await responder(msg, '⚠️ No hay notificadores registrados en este grupo.');
                 }
                 return;
             }
@@ -361,41 +362,41 @@ bot.on('message_create', async (msg) => {
                 if (!esGrupo) return;
                 let lista = configSistema.notificadoresGrupos && configSistema.notificadoresGrupos[chatId] ? configSistema.notificadoresGrupos[chatId] : [];
                 if (lista.length === 0) {
-                    return await msg.reply('ℹ️ No hay notificadores manuales en este grupo.');
+                    return await responder(msg, 'ℹ️ No hay notificadores manuales en este grupo.');
                 }
                 let textoLista = "🔔 *Notificadores de este grupo:*\n\n";
                 lista.forEach(id => textoLista += `• \`${id}\`\n`);
-                await msg.reply(textoLista);
+                await responder(msg, textoLista);
                 return;
             }
 
             if (textoMensaje.toLowerCase().startsWith('/setstock ')) {
                 if (!tienePermisoOperativo) return;
-                if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
+                if (!esGrupo) return await responder(msg, '⚠️ Solo se puede usar en grupos.');
 
                 const nuevoStock = textoMensaje.slice(10).trim();
                 if (!configSistema.stockGrupos) configSistema.stockGrupos = {};
                 configSistema.stockGrupos[chatId] = nuevoStock;
                 guardarConfig(configSistema);
-                await msg.reply('✅ *Inventario actualizado.*\nCuando los clientes escriban `.stock`, verán tu mensaje.');
+                await responder(msg, '✅ *Inventario actualizado.*\nCuando los clientes escriban `.stock`, verán tu mensaje.');
                 return;
             }
 
             if (!tienePermisoOperativo) return; 
 
             if (textoMensaje.toLowerCase().startsWith('/precio ')) {
-                if (!esGrupo) return await msg.reply('⚠️ Úsalo en un grupo.');
+                if (!esGrupo) return await responder(msg, '⚠️ Úsalo en un grupo.');
                 const argumentos = textoMensaje.split(' ').filter(arg => arg.trim() !== "");
-                if (argumentos.length < 3) return await msg.reply('⚠️ Uso: `/precio receta 35` o `/precio acta 15`');
+                if (argumentos.length < 3) return await responder(msg, '⚠️ Uso: `/precio receta 35` o `/precio acta 15`');
 
                 let tipoServicio = argumentos[1].toLowerCase();
                 const nuevoPrecio = parseInt(argumentos[2], 10);
 
-                if (isNaN(nuevoPrecio) || nuevoPrecio < 1) return await msg.reply('⚠️ Cantidad inválida.');
+                if (isNaN(nuevoPrecio) || nuevoPrecio < 1) return await responder(msg, '⚠️ Cantidad inválida.');
                 
                 const serviciosValidos = ['nacimiento', 'nacimiento_nf', 'matrimonio', 'matrimonio_mf', 'defuncion', 'defuncion_df', 'divorcio', 'divorcio_d0', 'sat', 'rfcclon', 'acta', 'receta', 'cescolar', 'cmedico'];
                 if (!serviciosValidos.includes(tipoServicio)) {
-                    return await msg.reply('⚠️ Servicio inválido.');
+                    return await responder(msg, '⚠️ Servicio inválido.');
                 }
 
                 if (!configSistema.precios) configSistema.precios = {};
@@ -427,11 +428,11 @@ bot.on('message_create', async (msg) => {
                     configSistema.precios[chatId].divorcio = nuevoPrecio;
                     configSistema.precios[chatId].divorcio_d0 = nuevoPrecio;
                     guardarConfig(configSistema);
-                    await msg.reply(`✅ *Precios actualizados*\n📋 Todas las Actas ahora cuestan: $${nuevoPrecio}.00`);
+                    await responder(msg, `✅ *Precios actualizados*\n📋 Todas las Actas ahora cuestan: $${nuevoPrecio}.00`);
                 } else {
                     configSistema.precios[chatId][tipoServicio] = nuevoPrecio;
                     guardarConfig(configSistema);
-                    await msg.reply(`✅ *Nuevo precio*\n📋 ${tipoServicio.toUpperCase()}\n💵 $${nuevoPrecio}.00`);
+                    await responder(msg, `✅ *Nuevo precio*\n📋 ${tipoServicio.toUpperCase()}\n💵 $${nuevoPrecio}.00`);
                 }
                 return;
             }
@@ -439,15 +440,15 @@ bot.on('message_create', async (msg) => {
             if (textoMensaje.toLowerCase() === '/id') {
                 let idDetectado = await extraerIdUsuarioCitado(msg);
                 if (idDetectado) {
-                    await msg.reply(`🔑 *ID:* \`${idDetectado}\``);
+                    await responder(msg, `🔑 *ID:* \`${idDetectado}\``);
                 } else {
-                    await msg.reply('⚠️ Cita un mensaje del usuario.');
+                    await responder(msg, '⚠️ Cita un mensaje del usuario.');
                 }
                 return;
             }
 
             if (textoMensaje.toLowerCase().startsWith('/saldo')) {
-                if (!esGrupo) return await msg.reply('⚠️ Usa esto dentro del grupo.');
+                if (!esGrupo) return await responder(msg, '⚠️ Usa esto dentro del grupo.');
 
                 const argumentos = textoMensaje.split(' ').filter(arg => arg.trim() !== "");
                 let targetUser = await extraerIdUsuarioCitado(msg);
@@ -482,10 +483,10 @@ bot.on('message_create', async (msg) => {
 
                     guardarSaldos(saldosUsuarios);
                     const nombreMostrar = targetUser.split('@')[0];
-                    await msg.reply(`✅ *Saldo Asignado*\n👤 *Usuario:* ${nombreMostrar}\n💰 *Abonado:* +$${montoPesos}.00\n🔋 *Disponible:* $${saldosUsuarios[chatId][targetUser]}.00`).catch(()=>null);
+                    await responder(msg, `✅ *Saldo Asignado*\n👤 *Usuario:* ${nombreMostrar}\n💰 *Abonado:* +$${montoPesos}.00\n🔋 *Disponible:* $${saldosUsuarios[chatId][targetUser]}.00`);
                     return;
                 } else {
-                    await msg.reply('⚠️ Cita el mensaje del cliente con `/saldo 100`').catch(()=>null);
+                    await responder(msg, '⚠️ Cita el mensaje del cliente con `/saldo 100`');
                     return;
                 }
             }
@@ -493,12 +494,12 @@ bot.on('message_create', async (msg) => {
             if (textoMensaje.toLowerCase().startsWith('/r ')) {
                 try {
                     const argumentos = textoMensaje.split(' ').filter(arg => arg.trim() !== "");
-                    if (argumentos.length < 2) return await msg.reply('⚠️ Uso: `/r [alias] [ID]`');
+                    if (argumentos.length < 2) return await responder(msg, '⚠️ Uso: `/r [alias] [ID]`');
 
                     const aliasDestino = argumentos[1].toLowerCase();
                     const idDelChatDestino = configSistema.gruposDestino[aliasDestino];
 
-                    if (!idDelChatDestino) return await msg.reply(`⚠️ El alias *${aliasDestino}* no existe.`);
+                    if (!idDelChatDestino) return await responder(msg, `⚠️ El alias *${aliasDestino}* no existe.`);
 
                     let targetUser = "";
                     if (argumentos.length > 2) {
@@ -540,12 +541,12 @@ bot.on('message_create', async (msg) => {
                         }
 
                         await mensajeObjetivo.forward(idDelChatDestino);
-                        await msg.reply(`✅ Documento reenviado a *${aliasDestino}*.`);
+                        await responder(msg, `✅ Documento reenviado a *${aliasDestino}*.`);
                     } else {
-                        await msg.reply('⚠️ No detecté el archivo.');
+                        await responder(msg, '⚠️ No detecté el archivo.');
                     }
                 } catch (error) {
-                    await msg.reply('⚠️ Fallo al reenviar.').catch(()=>null);
+                    await responder(msg, '⚠️ Fallo al reenviar.');
                 }
                 return;
             }
@@ -591,26 +592,26 @@ bot.on('message_create', async (msg) => {
 • SAT: RFC + IDCIF + 9
 • RFC Clon: RFC + 1`;
 
-            await msg.reply(listaComandos);
+            await responder(msg, listaComandos);
             return;
         }
 
         if (textoMensaje.toLowerCase().startsWith('.setpago ') || textoMensaje.toLowerCase().startsWith('/setpago ')) {
             if (!tienePermisoOperativo) return;
-            if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
+            if (!esGrupo) return await responder(msg, '⚠️ Solo se puede usar en grupos.');
 
             const nuevoPago = textoMensaje.substring(textoMensaje.indexOf(' ') + 1).trim();
             if (!configSistema.pagosGrupos) configSistema.pagosGrupos = {};
             configSistema.pagosGrupos[chatId] = nuevoPago;
             guardarConfig(configSistema);
-            await msg.reply('✅ *Datos de pago guardados.*\nCuando los clientes escriban `.pago`, verán esta información.');
+            await responder(msg, '✅ *Datos de pago guardados.*\nCuando los clientes escriban `.pago`, verán esta información.');
             return;
         }
 
         if (textoMensaje.toLowerCase() === '.pago') {
             if (esGrupo && !esGrupoAutorizado) return;
             const msjPago = (configSistema.pagosGrupos && configSistema.pagosGrupos[chatId]) ? configSistema.pagosGrupos[chatId] : 'ℹ️ El vendedor aún no ha configurado sus datos de pago en este grupo.';
-            await msg.reply(msjPago).catch(()=>null);
+            await responder(msg, msjPago);
             return;
         }
 
@@ -619,13 +620,13 @@ bot.on('message_create', async (msg) => {
             const cliente = msg.author || msg.from;
             saldosUsuarios = cargarSaldos();
             const saldoActual = (saldosUsuarios[chatId] && saldosUsuarios[chatId][cliente]) ? saldosUsuarios[chatId][cliente] : 0;
-            await msg.reply(`🔋 *Tu saldo actual es:* $${saldoActual}.00 MXN`).catch(()=>null);
+            await responder(msg, `🔋 *Tu saldo actual es:* $${saldoActual}.00 MXN`);
             return;
         }
 
         if (textoMensaje.toLowerCase().startsWith('.kick')) {
             if (!tienePermisoOperativo) return;
-            if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
+            if (!esGrupo) return await responder(msg, '⚠️ Solo se puede usar en grupos.');
             
             let targetKick = await extraerIdUsuarioCitado(msg);
             if (!targetKick) {
@@ -633,24 +634,24 @@ bot.on('message_create', async (msg) => {
                 if (args.length > 1) targetKick = args[1].includes('@') ? args[1] : `${args[1]}@c.us`;
             }
 
-            if (!targetKick) return await msg.reply('⚠️ Etiqueta o cita el mensaje del usuario que deseas expulsar.');
+            if (!targetKick) return await responder(msg, '⚠️ Etiqueta o cita el mensaje del usuario que deseas expulsar.');
 
             try {
                 const chat = await msg.getChat();
                 await chat.removeParticipants([targetKick]);
-                await msg.reply('👢 *¡Usuario expulsado del grupo con éxito!*');
+                await responder(msg, '👢 *¡Usuario expulsado del grupo con éxito!*');
             } catch (error) {
-                await msg.reply('⚠️ No pude expulsarlo. Verifica que soy Administrador del grupo.');
+                await responder(msg, '⚠️ No pude expulsarlo. Verifica que soy Administrador del grupo.');
             }
             return;
         }
 
         if (textoMensaje.toLowerCase().startsWith('.n ')) {
             if (!tienePermisoOperativo) return;
-            if (!esGrupo) return await msg.reply('⚠️ Solo se puede usar en grupos.');
+            if (!esGrupo) return await responder(msg, '⚠️ Solo se puede usar en grupos.');
 
             const anuncio = textoMensaje.slice(3).trim();
-            if (!anuncio) return await msg.reply('⚠️ Escribe el mensaje que deseas anunciar.');
+            if (!anuncio) return await responder(msg, '⚠️ Escribe el mensaje que deseas anunciar.');
 
             try {
                 const chat = await msg.getChat();
@@ -659,16 +660,14 @@ bot.on('message_create', async (msg) => {
                     mentions.push(participant.id._serialized);
                 }
                 await chat.sendMessage(`📢 *ANUNCIO IMPORTANTE:*\n\n${anuncio}`, { mentions });
-            } catch (e) {
-                console.log('Fallo al enviar anuncio:', e);
-            }
+            } catch (e) {}
             return;
         }
 
         if (textoMensaje.toLowerCase() === '.stock') {
             if (esGrupo && !esGrupoAutorizado) return;
             const msjStock = (configSistema.stockGrupos && configSistema.stockGrupos[chatId]) ? configSistema.stockGrupos[chatId] : 'ℹ️ No hay información de stock establecida por el momento.';
-            await msg.reply(msjStock).catch(()=>null);
+            await responder(msg, msjStock);
             return;
         }
 
@@ -741,7 +740,7 @@ bot.on('message_create', async (msg) => {
                 let saldoDisponible = saldosUsuarios[chatId][cliente] || 0;
 
                 if (saldoDisponible <= 0) {
-                    await msg.reply(`⚠️ *AVISO* ⚠️\nNo cuentas con saldo suficiente.`).catch(()=>null);
+                    await responder(msg, `⚠️ *AVISO* ⚠️\nNo cuentas con saldo suficiente.`);
                     return;
                 }
 
@@ -790,12 +789,10 @@ bot.on('message_create', async (msg) => {
                 saldosUsuarios[chatId][cliente] = saldoDisponible;
                 guardarSaldos(saldosUsuarios);
                 textoConfirmacion += `\n🔋 *Saldo disponible:* $${saldoDisponible}.00 MXN\nProcesando solicitud... ⌛`;
-                await msg.reply(textoConfirmacion).catch(()=>null);
+                await responder(msg, textoConfirmacion);
             }
         }
-    } catch (errorFatal) {
-        console.error(errorFatal);
-    }
+    } catch (errorFatal) {}
 });
 
 bot.initialize();
