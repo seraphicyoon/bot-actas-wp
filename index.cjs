@@ -39,18 +39,26 @@ const PRECIO_CMEDICO = 15;
 // --- BASES DE DATOS (CON MEMORIA BLINDADA EN RAILWAY) ---
 const CARPETA_DATOS = process.env.RAILWAY_VOLUME_MOUNT_PATH || __dirname;
 
-// 🧹 LIMPIEZA DE CACHÉ VIEJA
+// 🔓 LIMPIEZA DE EMERGENCIA: BORRA EL CANDADO DE CHROMIUM (SingletonLock)
 try {
     if (fs.existsSync(CARPETA_DATOS)) {
-        const archivos = fs.readdirSync(CARPETA_DATOS);
-        for (const archivo of archivos) {
-            if (archivo.startsWith('session-') && archivo !== 'session-sesion-actas-v7') {
-                const rutaCompleta = path.join(CARPETA_DATOS, archivo);
-                fs.rmSync(rutaCompleta, { recursive: true, force: true });
+        const limpiarLocks = (dir) => {
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            for (let entry of entries) {
+                const fullPath = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    limpiarLocks(fullPath);
+                } else if (entry.name === 'SingletonLock' || entry.name === 'SingletonSocket' || entry.name === 'SingletonCookie') {
+                    fs.unlinkSync(fullPath);
+                    console.log(`🔓 Candado de navegador eliminado: ${fullPath}`);
+                }
             }
-        }
+        };
+        limpiarLocks(CARPETA_DATOS);
     }
-} catch (e) {}
+} catch (e) {
+    console.log('Aviso de limpieza de locks:', e.message);
+}
 
 const PATH_SALDOS = path.join(CARPETA_DATOS, 'saldos.json');
 const PATH_CONFIG = path.join(CARPETA_DATOS, 'config.json');
@@ -95,7 +103,6 @@ function guardarConfig(config) {
     try { fs.writeFileSync(PATH_CONFIG, JSON.stringify(config, null, 4), 'utf8'); } catch (error) {}
 }
 
-// 🛡️ FUNCIÓN DE RESPUESTA BLINDADA (EVITA QUE EL BOT SE QUEDE MUDO)
 async function responder(msg, texto) {
     try {
         if (msg.fromMe) {
