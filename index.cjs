@@ -39,25 +39,15 @@ const PRECIO_CMEDICO = 15;
 // --- BASES DE DATOS (CON MEMORIA BLINDADA EN RAILWAY) ---
 const CARPETA_DATOS = process.env.RAILWAY_VOLUME_MOUNT_PATH || __dirname;
 
-// 🔓 LIMPIEZA DE EMERGENCIA: BORRA EL CANDADO DE CHROMIUM (SingletonLock)
+// 🗑️ LIMPIEZA TOTAL DE LA SESIÓN CORRUPTA ANTERIOR PARA EVITAR CONGELAMIENTOS
 try {
-    if (fs.existsSync(CARPETA_DATOS)) {
-        const limpiarLocks = (dir) => {
-            const entries = fs.readdirSync(dir, { withFileTypes: true });
-            for (let entry of entries) {
-                const fullPath = path.join(dir, entry.name);
-                if (entry.isDirectory()) {
-                    limpiarLocks(fullPath);
-                } else if (entry.name === 'SingletonLock' || entry.name === 'SingletonSocket' || entry.name === 'SingletonCookie') {
-                    fs.unlinkSync(fullPath);
-                    console.log(`🔓 Candado de navegador eliminado: ${fullPath}`);
-                }
-            }
-        };
-        limpiarLocks(CARPETA_DATOS);
+    const carpetaSesionVieja = path.join(CARPETA_DATOS, 'session-sesion-actas-v7');
+    if (fs.existsSync(carpetaSesionVieja)) {
+        fs.rmSync(carpetaSesionVieja, { recursive: true, force: true });
+        console.log('🗑️ Sesión anterior corrupta eliminada por completo.');
     }
 } catch (e) {
-    console.log('Aviso de limpieza de locks:', e.message);
+    console.log('Aviso de limpieza:', e.message);
 }
 
 const PATH_SALDOS = path.join(CARPETA_DATOS, 'saldos.json');
@@ -155,7 +145,7 @@ let configSistema = cargarConfig();
 
 const bot = new Client({
     authStrategy: new LocalAuth({ 
-        clientId: "sesion-actas-v7", 
+        clientId: "sesion-actas-v8", 
         dataPath: CARPETA_DATOS 
     }),
     puppeteer: {
@@ -169,6 +159,15 @@ const bot = new Client({
             '--disable-gpu'
         ]
     }
+});
+
+// 🔗 ENLACE DIRECTO PARA VER EL QR LIMPIO
+bot.on('qr', (qr) => {
+    const qrWebUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
+    console.log('\n======================================================');
+    console.log('🔗 ABRE ESTE ENLACE EN TU NAVEGADOR PARA VER EL QR:');
+    console.log(qrWebUrl);
+    console.log('======================================================\n');
 });
 
 bot.on('ready', () => {
