@@ -69,11 +69,12 @@ function cargarConfig() {
             if (!config.notificadoresGrupos) config.notificadoresGrupos = {};
             if (!config.stockGrupos) config.stockGrupos = {}; 
             if (!config.pagosGrupos) config.pagosGrupos = {}; 
+            if (!config.tramitesGrupos) config.tramitesGrupos = {}; // Nuevo bloque tramites
             return config;
         }
     } catch (e) {}
     
-    const configInicial = { gruposAutorizados: [], vendedores: [], superAdmins: [], gruposDestino: {}, precios: {}, propietariosGrupos: {}, notificadoresGrupos: {}, stockGrupos: {}, pagosGrupos: {} };
+    const configInicial = { gruposAutorizados: [], vendedores: [], superAdmins: [], gruposDestino: {}, precios: {}, propietariosGrupos: {}, notificadoresGrupos: {}, stockGrupos: {}, pagosGrupos: {}, tramitesGrupos: {} };
     fs.writeFileSync(PATH_CONFIG, JSON.stringify(configInicial, null, 4), 'utf8');
     return configInicial;
 }
@@ -131,6 +132,15 @@ async function extraerIdUsuarioCitado(msg) {
 
 let saldosUsuarios = cargarSaldos();
 let configSistema = cargarConfig();
+
+// 🧹 Limpieza automática del bloqueo de Chromium para que no falle el arranque
+try {
+    const lockFile = path.join(CARPETA_DATOS, 'session-sesion-actas-final', 'SingletonLock');
+    if (fs.existsSync(lockFile)) {
+        fs.unlinkSync(lockFile);
+        console.log('🧹 Candado de sesión anterior eliminado correctamente.');
+    }
+} catch (e) {}
 
 const bot = new Client({
     authStrategy: new LocalAuth({ 
@@ -377,6 +387,19 @@ bot.on('message_create', async (msg) => {
                 return;
             }
 
+            // --- NUEVO COMANDO /SETTRAMITES ---
+            if (textoMensaje.toLowerCase().startsWith('/settramites ')) {
+                if (!tienePermisoOperativo) return;
+                if (!esGrupo) return await responder(msg, '⚠️ Solo se puede usar en grupos.');
+
+                const nuevosTramites = textoMensaje.slice(13).trim();
+                if (!configSistema.tramitesGrupos) configSistema.tramitesGrupos = {};
+                configSistema.tramitesGrupos[chatId] = nuevosTramites;
+                guardarConfig(configSistema);
+                await responder(msg, '✅ *Lista de trámites actualizada.*\nCuando los clientes escriban `.tramites`, verán tu mensaje.');
+                return;
+            }
+
             if (!tienePermisoOperativo) return; 
 
             if (textoMensaje.toLowerCase().startsWith('/precio ')) {
@@ -565,25 +588,27 @@ bot.on('message_create', async (msg) => {
 • /vernotis
 
 💰 *Ventas y Operaciones:*
-• /precio [tramite] [monto] (Ej. /precio acta 15)
-• /saldo [monto] (cita un msj, Ej. /saldo 100)
-• /id (cita un msj para ver ID oculto)
-• /r [alias] [@usuario] (reenvía un archivo listo)
-• .setpago [Datos bancarios] (o /setpago)
+• /precio [tramite] [monto]
+• /saldo [monto] (cita un msj)
+• /id (cita un msj)
+• /r [alias] [@usuario] (reenvío rápido)
+• .setpago [Datos bancarios]
 • /setstock [Mensaje de inventario]
+• /settramites [Lista de trámites]
 
 👢 *Moderación y Anuncios:*
-• .kick (cita un msj o ID para expulsar)
-• .n [mensaje] (Etiqueta invisible a todos)
+• .kick (cita un msj o ID)
+• .n [mensaje] (Etiqueta invisible)
 
 📦 *Para Clientes:*
 • .stock (Muestra inventario)
+• .tramites (Muestra otros servicios)
 • .pago (Muestra datos bancarios)
 • .versaldo (Muestra tu saldo actual)
 • .receta [datos]
 • .cescolar [datos]
 • .cmedico [datos]
-• Actas: CURP + Num/Código (Ej. ABCD... 5)
+• Actas: CURP + Num/Código
 • SAT: RFC + IDCIF + 9
 • RFC Clon: RFC + 1`;
 
@@ -603,10 +628,30 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
+        if (textoMensaje.toLowerCase().startsWith('.settramites ')) {
+            if (!tienePermisoOperativo) return;
+            if (!esGrupo) return await responder(msg, '⚠️ Solo se puede usar en grupos.');
+
+            const nuevosTramites = textoMensaje.substring(textoMensaje.indexOf(' ') + 1).trim();
+            if (!configSistema.tramitesGrupos) configSistema.tramitesGrupos = {};
+            configSistema.tramitesGrupos[chatId] = nuevosTramites;
+            guardarConfig(configSistema);
+            await responder(msg, '✅ *Lista de trámites guardada.*\nCuando los clientes escriban `.tramites`, verán esta información.');
+            return;
+        }
+
         if (textoMensaje.toLowerCase() === '.pago') {
             if (esGrupo && !esGrupoAutorizado) return;
             const msjPago = (configSistema.pagosGrupos && configSistema.pagosGrupos[chatId]) ? configSistema.pagosGrupos[chatId] : 'ℹ️ El vendedor aún no ha configurado sus datos de pago en este grupo.';
             await responder(msg, msjPago);
+            return;
+        }
+
+        // --- COMANDO .TRAMITES PARA CLIENTES ---
+        if (textoMensaje.toLowerCase() === '.tramites') {
+            if (esGrupo && !esGrupoAutorizado) return;
+            const msjTramites = (configSistema.tramitesGrupos && configSistema.tramitesGrupos[chatId]) ? configSistema.tramitesGrupos[chatId] : 'ℹ️ No hay información de trámites establecida por el momento.';
+            await responder(msg, msjTramites);
             return;
         }
 
@@ -668,7 +713,8 @@ bot.on('message_create', async (msg) => {
 
         if (esGrupo && !esGrupoAutorizado) return;
 
-        if (!textoMensaje.startsWith('/') && !textoMensaje.startsWith('.kick') && !textoMensaje.startsWith('.n ') && !textoMensaje.toLowerCase().startsWith('.setpago') && textoMensaje.toLowerCase() !== '.stock' && textoMensaje.toLowerCase() !== '.pago' && textoMensaje.toLowerCase() !== '.jinni' && textoMensaje.toLowerCase() !== '.versaldo') {
+        // SE AGREGÓ EL FILTRO PARA QUE .TRAMITES NO LO TOME COMO ERROR AL FINAL
+        if (!textoMensaje.startsWith('/') && !textoMensaje.startsWith('.kick') && !textoMensaje.startsWith('.n ') && !textoMensaje.toLowerCase().startsWith('.setpago') && !textoMensaje.toLowerCase().startsWith('.settramites') && textoMensaje.toLowerCase() !== '.stock' && textoMensaje.toLowerCase() !== '.tramites' && textoMensaje.toLowerCase() !== '.pago' && textoMensaje.toLowerCase() !== '.jinni' && textoMensaje.toLowerCase() !== '.versaldo') {
             const lineas = textoMensaje.split('\n').map(l => l.trim()).filter(l => l !== "");
             
             const regexActas = /^([A-Z]{4}\d{6}[A-Z]{6}[A-Z0-9]\d)\s([5-8]|NF|MF|DF|D0)$/i;
