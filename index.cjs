@@ -69,7 +69,7 @@ function cargarConfig() {
             if (!config.notificadoresGrupos) config.notificadoresGrupos = {};
             if (!config.stockGrupos) config.stockGrupos = {}; 
             if (!config.pagosGrupos) config.pagosGrupos = {}; 
-            if (!config.tramitesGrupos) config.tramitesGrupos = {}; // Nuevo bloque tramites
+            if (!config.tramitesGrupos) config.tramitesGrupos = {}; 
             return config;
         }
     } catch (e) {}
@@ -133,18 +133,29 @@ async function extraerIdUsuarioCitado(msg) {
 let saldosUsuarios = cargarSaldos();
 let configSistema = cargarConfig();
 
-// 🧹 Limpieza automática del bloqueo de Chromium para que no falle el arranque
-try {
-    const lockFile = path.join(CARPETA_DATOS, 'session-sesion-actas-final', 'SingletonLock');
-    if (fs.existsSync(lockFile)) {
-        fs.unlinkSync(lockFile);
-        console.log('🧹 Candado de sesión anterior eliminado correctamente.');
-    }
-} catch (e) {}
+// 🧹 LIMPIEZA PROFUNDA Y AUTOMÁTICA DE BLOQUEOS (DESTRUYE EL ERROR 21)
+function destruirCandadosChromium(directorio) {
+    try {
+        if (!fs.existsSync(directorio)) return;
+        const archivos = fs.readdirSync(directorio);
+        for (const archivo of archivos) {
+            const rutaCompleta = path.join(directorio, archivo);
+            const stat = fs.statSync(rutaCompleta);
+            if (stat.isDirectory()) {
+                destruirCandadosChromium(rutaCompleta); // Busca dentro de las carpetas ocultas
+            } else if (archivo.startsWith('Singleton')) {
+                fs.unlinkSync(rutaCompleta);
+                console.log(`🧹 Candado atascado destruido: ${rutaCompleta}`);
+            }
+        }
+    } catch (e) {}
+}
+// Ejecutamos la limpieza antes de prender el bot
+destruirCandadosChromium(CARPETA_DATOS);
 
 const bot = new Client({
     authStrategy: new LocalAuth({ 
-        clientId: "sesion-actas-final", // Sesión fija y permanente para que nunca más se borre
+        clientId: "sesion-actas-final", 
         dataPath: CARPETA_DATOS 
     }),
     puppeteer: {
@@ -713,7 +724,6 @@ bot.on('message_create', async (msg) => {
 
         if (esGrupo && !esGrupoAutorizado) return;
 
-        // SE AGREGÓ EL FILTRO PARA QUE .TRAMITES NO LO TOME COMO ERROR AL FINAL
         if (!textoMensaje.startsWith('/') && !textoMensaje.startsWith('.kick') && !textoMensaje.startsWith('.n ') && !textoMensaje.toLowerCase().startsWith('.setpago') && !textoMensaje.toLowerCase().startsWith('.settramites') && textoMensaje.toLowerCase() !== '.stock' && textoMensaje.toLowerCase() !== '.tramites' && textoMensaje.toLowerCase() !== '.pago' && textoMensaje.toLowerCase() !== '.jinni' && textoMensaje.toLowerCase() !== '.versaldo') {
             const lineas = textoMensaje.split('\n').map(l => l.trim()).filter(l => l !== "");
             
