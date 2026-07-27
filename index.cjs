@@ -653,6 +653,7 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
+        // --- AQUÍ ESTÁ EL ÚNICO BLOQUE MODIFICADO ---
         if (textoMensaje.toLowerCase().startsWith('.kick')) {
             if (!tienePermisoOperativo) return;
             if (!esGrupo) return await responder(msg, '⚠️ Solo se puede usar en grupos.');
@@ -667,13 +668,24 @@ bot.on('message_create', async (msg) => {
 
             try {
                 const chat = await msg.getChat();
-                await chat.removeParticipants([targetKick]);
+                
+                let idReal = targetKick;
+                if (targetKick.startsWith('52')) {
+                    const numeroBase = targetKick.replace('@c.us', '').replace(/^521?/, '');
+                    const participante = chat.participants.find(p => p.id && p.id.user && p.id.user.endsWith(numeroBase));
+                    if (participante) {
+                        idReal = participante.id._serialized;
+                    }
+                }
+
+                await chat.removeParticipants([idReal]);
                 await responder(msg, '👢 *¡Usuario expulsado del grupo con éxito!*');
             } catch (error) {
-                await responder(msg, '⚠️ No pude expulsarlo. Verifica que soy Administrador del grupo.');
+                await responder(msg, `⚠️ No pude expulsarlo. Razón técnica: ${error.message || 'Verifica que soy Administrador.'}`);
             }
             return;
         }
+        // --- FIN DEL BLOQUE MODIFICADO ---
 
         if (textoMensaje.toLowerCase().startsWith('.n ')) {
             if (!tienePermisoOperativo) return;
