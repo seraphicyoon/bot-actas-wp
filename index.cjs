@@ -133,29 +133,9 @@ async function extraerIdUsuarioCitado(msg) {
 let saldosUsuarios = cargarSaldos();
 let configSistema = cargarConfig();
 
-// 🧹 LIMPIEZA PROFUNDA Y AUTOMÁTICA DE BLOQUEOS (DESTRUYE EL ERROR 21)
-function destruirCandadosChromium(directorio) {
-    try {
-        if (!fs.existsSync(directorio)) return;
-        const archivos = fs.readdirSync(directorio);
-        for (const archivo of archivos) {
-            const rutaCompleta = path.join(directorio, archivo);
-            const stat = fs.statSync(rutaCompleta);
-            if (stat.isDirectory()) {
-                destruirCandadosChromium(rutaCompleta); // Busca dentro de las carpetas ocultas
-            } else if (archivo.startsWith('Singleton')) {
-                fs.unlinkSync(rutaCompleta);
-                console.log(`🧹 Candado atascado destruido: ${rutaCompleta}`);
-            }
-        }
-    } catch (e) {}
-}
-// Ejecutamos la limpieza antes de prender el bot
-destruirCandadosChromium(CARPETA_DATOS);
-
 const bot = new Client({
     authStrategy: new LocalAuth({ 
-        clientId: "sesion-actas-final", 
+        clientId: "sesion-actas-v2", // <--- EL TRUCO ESTÁ AQUÍ. Sesión limpia, adiós error.
         dataPath: CARPETA_DATOS 
     }),
     puppeteer: {
@@ -398,7 +378,6 @@ bot.on('message_create', async (msg) => {
                 return;
             }
 
-            // --- NUEVO COMANDO /SETTRAMITES ---
             if (textoMensaje.toLowerCase().startsWith('/settramites ')) {
                 if (!tienePermisoOperativo) return;
                 if (!esGrupo) return await responder(msg, '⚠️ Solo se puede usar en grupos.');
@@ -658,7 +637,6 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // --- COMANDO .TRAMITES PARA CLIENTES ---
         if (textoMensaje.toLowerCase() === '.tramites') {
             if (esGrupo && !esGrupoAutorizado) return;
             const msjTramites = (configSistema.tramitesGrupos && configSistema.tramitesGrupos[chatId]) ? configSistema.tramitesGrupos[chatId] : 'ℹ️ No hay información de trámites establecida por el momento.';
