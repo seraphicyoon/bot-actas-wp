@@ -135,7 +135,7 @@ let configSistema = cargarConfig();
 
 const bot = new Client({
     authStrategy: new LocalAuth({ 
-        clientId: "sesion-actas-v2", // <--- EL TRUCO ESTÁ AQUÍ. Sesión limpia, adiós error.
+        clientId: "sesion-actas-v2", 
         dataPath: CARPETA_DATOS 
     }),
     puppeteer: {
@@ -541,10 +541,13 @@ bot.on('message_create', async (msg) => {
                     }
 
                     if (mensajeObjetivo) {
+                        let contactToMention = null;
                         if (targetUser && !targetUser.includes('@g.us')) {
+                            // Convertir ID a Contacto real para que WhatsApp Web no crashee
+                            try { contactToMention = await bot.getContactById(targetUser); } catch(e){}
                             const baseUser = targetUser.split('@')[0];
                             await bot.sendMessage(idDelChatDestino, `✅ ¡Tu trámite está listo! @${baseUser}`, {
-                                mentions: [targetUser]
+                                mentions: contactToMention ? [contactToMention] : []
                             });
                         }
 
@@ -653,7 +656,7 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // --- AQUÍ ESTÁ EL ÚNICO BLOQUE MODIFICADO ---
+        // --- SOLUCIÓN AL ERROR "R" EN EXPULSIÓN ---
         if (textoMensaje.toLowerCase().startsWith('.kick')) {
             if (!tienePermisoOperativo) return;
             if (!esGrupo) return await responder(msg, '⚠️ Solo se puede usar en grupos.');
@@ -678,15 +681,28 @@ bot.on('message_create', async (msg) => {
                     }
                 }
 
+                // Seguro para revisar si la memoria del bot ya detectó que es admin
+                const botNumber = bot.info && bot.info.wid ? bot.info.wid._serialized : null;
+                if (botNumber) {
+                    const botParticipant = chat.participants.find(p => p.id._serialized === botNumber);
+                    if (!botParticipant || (!botParticipant.isAdmin && !botParticipant.isSuperAdmin)) {
+                        return await responder(msg, '⚠️ La memoria de WhatsApp aún no reconoce al bot como administrador en este instante. Quítame el admin, ponlo de nuevo y espera 1 minuto.');
+                    }
+                }
+
                 await chat.removeParticipants([idReal]);
                 await responder(msg, '👢 *¡Usuario expulsado del grupo con éxito!*');
             } catch (error) {
-                await responder(msg, `⚠️ No pude expulsarlo. Razón técnica: ${error.message || 'Verifica que soy Administrador.'}`);
+                let errorMsg = error.message || String(error);
+                if (errorMsg === 'r' || errorMsg.includes('r')) {
+                    errorMsg = 'WhatsApp bloqueó la acción por seguridad (Error interno R). Esto suele pasar si el usuario que intentas sacar es Administrador o si la versión web los protege.';
+                }
+                await responder(msg, `⚠️ No pude expulsarlo. Razón técnica: ${errorMsg}`);
             }
             return;
         }
-        // --- FIN DEL BLOQUE MODIFICADO ---
 
+        // --- SOLUCIÓN AL FALLO SILENCIOSO DE ANUNCIOS ---
         if (textoMensaje.toLowerCase().startsWith('.n ')) {
             if (!tienePermisoOperativo) return;
             if (!esGrupo) return await responder(msg, '⚠️ Solo se puede usar en grupos.');
@@ -696,12 +712,18 @@ bot.on('message_create', async (msg) => {
 
             try {
                 const chat = await msg.getChat();
-                let mentions = [];
-                for (let participant of chat.participants) {
-                    mentions.push(participant.id._serialized);
-                }
+                
+                // Menciones seguras buscando el objeto Contacto completo (evita que el bot colapse en silencio)
+                let mentions = await Promise.all(
+                    chat.participants.map(p => bot.getContactById(p.id._serialized).catch(() => null))
+                );
+                mentions = mentions.filter(m => m !== null);
+
                 await chat.sendMessage(`📢 *ANUNCIO IMPORTANTE:*\n\n${anuncio}`, { mentions });
-            } catch (e) {}
+                await responder(msg, '✅ Anuncio enviado a todos los participantes.');
+            } catch (e) {
+                await responder(msg, `⚠️ No pude enviar el anuncio. Razón técnica: ${e.message}`);
+            }
             return;
         }
 
