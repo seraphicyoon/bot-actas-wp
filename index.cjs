@@ -164,6 +164,7 @@ bot.on('ready', () => {
     console.log('🚀 ¡Bot en línea, conectado y respondiendo al 100%!');
 });
 
+// --- SOLUCIÓN A LOS ANUNCIOS DE ABRIR/CERRAR GRUPO ---
 bot.on('group_update', async (notification) => {
     try {
         const chatId = notification.chatId || (notification.id && notification.id.remote);
@@ -173,12 +174,17 @@ bot.on('group_update', async (notification) => {
         if (!configActual.gruposAutorizados.includes(chatId)) return;
 
         if (notification.type === 'announce') {
-            const chat = await bot.getChatById(chatId);
-            if (chat.announce) {
-                await bot.sendMessage(chatId, '🔒 *LA TIENDA HA CERRADO* 🔒\nPor el momento los administradores han pausado los pedidos. ¡Regresamos pronto!');
-            } else {
-                await bot.sendMessage(chatId, '🔓 *¡LA TIENDA ESTÁ ABIERTA!* 🔓\nEl grupo está disponible nuevamente. Ya pueden solicitar sus trámites con normalidad.');
-            }
+            // Un pequeño retraso para asegurar que la memoria de WhatsApp ya se actualizó
+            setTimeout(async () => {
+                try {
+                    const chat = await bot.getChatById(chatId);
+                    if (chat.announce) {
+                        await bot.sendMessage(chatId, '🔒 *LA TIENDA HA CERRADO* 🔒\nPor el momento los administradores han pausado los pedidos. ¡Regresamos pronto!');
+                    } else {
+                        await bot.sendMessage(chatId, '🔓 *¡LA TIENDA ESTÁ ABIERTA!* 🔓\nEl grupo está disponible nuevamente. Ya pueden solicitar sus trámites con normalidad.');
+                    }
+                } catch (err) {}
+            }, 2000);
         }
     } catch (error) {}
 });
@@ -575,6 +581,7 @@ bot.on('message_create', async (msg) => {
 ⚙️ *Gestión de Grupos:*
 • /activargrupo, /desactivargrupo
 • /setgrupo [alias] (Para envíos rápidos)
+• .abrir / .cerrar (Habilita o pausa el grupo)
 
 🔔 *Notificaciones:*
 • /addnotis, /delnotis (cita un msj)
@@ -606,6 +613,31 @@ bot.on('message_create', async (msg) => {
 • RFC Clon: RFC + 1`;
 
             await responder(msg, listaComandos);
+            return;
+        }
+
+        // --- NUEVOS COMANDOS MANUALES PARA ABRIR Y CERRAR EL GRUPO ---
+        if (textoMensaje.toLowerCase() === '.cerrar') {
+            if (!tienePermisoOperativo) return;
+            if (!esGrupo) return await responder(msg, '⚠️ Solo se puede usar en grupos.');
+            try {
+                const chat = await msg.getChat();
+                await chat.setMessagesAdminsOnly(true);
+            } catch (e) {
+                await responder(msg, '⚠️ Error. Verifica que soy Administrador del grupo.');
+            }
+            return;
+        }
+
+        if (textoMensaje.toLowerCase() === '.abrir') {
+            if (!tienePermisoOperativo) return;
+            if (!esGrupo) return await responder(msg, '⚠️ Solo se puede usar en grupos.');
+            try {
+                const chat = await msg.getChat();
+                await chat.setMessagesAdminsOnly(false);
+            } catch (e) {
+                await responder(msg, '⚠️ Error. Verifica que soy Administrador del grupo.');
+            }
             return;
         }
 
@@ -656,7 +688,6 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // --- SOLUCIÓN AL ERROR "R" EN EXPULSIÓN ---
         if (textoMensaje.toLowerCase().startsWith('.kick')) {
             if (!tienePermisoOperativo) return;
             if (!esGrupo) return await responder(msg, '⚠️ Solo se puede usar en grupos.');
@@ -681,7 +712,6 @@ bot.on('message_create', async (msg) => {
                     }
                 }
 
-                // Seguro para revisar si la memoria del bot ya detectó que es admin
                 const botNumber = bot.info && bot.info.wid ? bot.info.wid._serialized : null;
                 if (botNumber) {
                     const botParticipant = chat.participants.find(p => p.id._serialized === botNumber);
@@ -702,7 +732,6 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // --- SOLUCIÓN AL FALLO SILENCIOSO DE ANUNCIOS ---
         if (textoMensaje.toLowerCase().startsWith('.n ')) {
             if (!tienePermisoOperativo) return;
             if (!esGrupo) return await responder(msg, '⚠️ Solo se puede usar en grupos.');
@@ -713,7 +742,6 @@ bot.on('message_create', async (msg) => {
             try {
                 const chat = await msg.getChat();
                 
-                // Menciones seguras buscando el objeto Contacto completo (evita que el bot colapse en silencio)
                 let mentions = await Promise.all(
                     chat.participants.map(p => bot.getContactById(p.id._serialized).catch(() => null))
                 );
@@ -736,7 +764,7 @@ bot.on('message_create', async (msg) => {
 
         if (esGrupo && !esGrupoAutorizado) return;
 
-        if (!textoMensaje.startsWith('/') && !textoMensaje.startsWith('.kick') && !textoMensaje.startsWith('.n ') && !textoMensaje.toLowerCase().startsWith('.setpago') && !textoMensaje.toLowerCase().startsWith('.settramites') && textoMensaje.toLowerCase() !== '.stock' && textoMensaje.toLowerCase() !== '.tramites' && textoMensaje.toLowerCase() !== '.pago' && textoMensaje.toLowerCase() !== '.jinni' && textoMensaje.toLowerCase() !== '.versaldo') {
+        if (!textoMensaje.startsWith('/') && !textoMensaje.startsWith('.kick') && !textoMensaje.startsWith('.n ') && !textoMensaje.toLowerCase().startsWith('.setpago') && !textoMensaje.toLowerCase().startsWith('.settramites') && !textoMensaje.toLowerCase().startsWith('.abrir') && !textoMensaje.toLowerCase().startsWith('.cerrar') && textoMensaje.toLowerCase() !== '.stock' && textoMensaje.toLowerCase() !== '.tramites' && textoMensaje.toLowerCase() !== '.pago' && textoMensaje.toLowerCase() !== '.jinni' && textoMensaje.toLowerCase() !== '.versaldo') {
             const lineas = textoMensaje.split('\n').map(l => l.trim()).filter(l => l !== "");
             
             const regexActas = /^([A-Z]{4}\d{6}[A-Z]{6}[A-Z0-9]\d)\s([5-8]|NF|MF|DF|D0)$/i;
@@ -823,7 +851,8 @@ bot.on('message_create', async (msg) => {
                         saldoDisponible -= tramite.costo;
                         exitosos.push(tramite);
 
-                        const alertaPrivada = `🔔 *TRÁMITE SOLICITADO*\n👤 *ID:* \`${cliente}\`\n🏷️ *Grupo:* \`${aliasDelGrupo}\`\n📋 *Servicio:* ${tramite.nombreServicio}\n🔑 *Identificador:* \`${tramite.identificador}\`\n🔋 *Saldo restante:* $${saldoDisponible}.00`;
+                        // --- SOLUCIÓN: FORMATO LIMPIO, SIN COMILLAS INVERTIDAS Y EN MAYÚSCULAS ---
+                        const alertaPrivada = `🔔 *TRÁMITE SOLICITADO*\n👤 *ID:* \`${cliente}\`\n🏷️ *Grupo:* \`${aliasDelGrupo}\`\n🔑 *Trámite:* ${tramite.identificador} ${tramite.nombreServicio.toUpperCase()}\n🔋 *Saldo restante:* $${saldoDisponible}.00`;
                         
                         let destinatarios = new Set([...SÚPER_ADMINS_NATOS]);
                         if (configSistema.notificadoresGrupos && configSistema.notificadoresGrupos[chatId]) {
