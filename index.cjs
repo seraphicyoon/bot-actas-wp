@@ -587,6 +587,10 @@ bot.on('message_create', async (msg) => {
 • /addnotis, /delnotis (cita un msj)
 • /vernotis
 
+🧹 *Limpieza y Memoria:*
+• .grupos (Muestra los grupos guardados)
+• .eliminar [alias o ID] (Borra todo de ese grupo)
+
 💰 *Ventas y Operaciones:*
 • /precio [tramite] [monto]
 • /saldo [monto] (cita un msj)
@@ -599,6 +603,7 @@ bot.on('message_create', async (msg) => {
 👢 *Moderación y Anuncios:*
 • .kick (cita un msj o ID)
 • .n [mensaje] (Etiqueta invisible)
+• .ver (Responde a una foto de 1 sola vez)
 
 📦 *Para Clientes:*
 • .stock (Muestra inventario)
@@ -616,15 +621,75 @@ bot.on('message_create', async (msg) => {
             return;
         }
 
-        // --- NUEVOS COMANDOS MANUALES PARA ABRIR Y CERRAR EL GRUPO ---
+        if (textoMensaje.toLowerCase() === '.grupos') {
+            if (!tienePermisoOperativo) return;
+            let list = "📂 *Grupos en Memoria:*\n\n";
+            let aliases = configSistema.gruposDestino || {};
+            
+            if (Object.keys(aliases).length === 0 && (!configSistema.gruposAutorizados || configSistema.gruposAutorizados.length === 0)) {
+                return await responder(msg, "📂 No hay grupos guardados en la memoria del bot.");
+            }
+
+            for (const [alias, id] of Object.entries(aliases)) {
+                list += `🏷️ *Alias:* ${alias}\n🆔 *ID:* ${id}\n\n`;
+            }
+
+            for (const id of (configSistema.gruposAutorizados || [])) {
+                if (!Object.values(aliases).includes(id)) {
+                    list += `🏷️ *Sin alias (Solo activado)*\n🆔 *ID:* ${id}\n\n`;
+                }
+            }
+
+            await responder(msg, list + "⚠️ Para borrar un grupo y sus saldos usa:\n`.eliminar [alias]` o `.eliminar [ID]`");
+            return;
+        }
+
+        if (textoMensaje.toLowerCase().startsWith('.eliminar ')) {
+            if (!tienePermisoOperativo) return;
+            const target = textoMensaje.slice(10).trim();
+            if (!target) return await responder(msg, "⚠️ Escribe el alias o el ID del grupo a eliminar. Ejemplo: `.eliminar ventas`");
+
+            let targetId = target;
+            let targetAlias = null;
+
+            for (const [alias, id] of Object.entries(configSistema.gruposDestino || {})) {
+                if (alias === target.toLowerCase() || id === target) {
+                    targetId = id;
+                    targetAlias = alias;
+                    break;
+                }
+            }
+
+            if (configSistema.gruposAutorizados) configSistema.gruposAutorizados = configSistema.gruposAutorizados.filter(id => id !== targetId);
+            if (configSistema.precios) delete configSistema.precios[targetId];
+            if (configSistema.propietariosGrupos) delete configSistema.propietariosGrupos[targetId];
+            if (configSistema.notificadoresGrupos) delete configSistema.notificadoresGrupos[targetId];
+            if (configSistema.stockGrupos) delete configSistema.stockGrupos[targetId];
+            if (configSistema.pagosGrupos) delete configSistema.pagosGrupos[targetId];
+            if (configSistema.tramitesGrupos) delete configSistema.tramitesGrupos[targetId];
+            if (targetAlias) delete configSistema.gruposDestino[targetAlias];
+
+            guardarConfig(configSistema);
+
+            saldosUsuarios = cargarSaldos();
+            if (saldosUsuarios[targetId]) {
+                delete saldosUsuarios[targetId];
+                guardarSaldos(saldosUsuarios);
+            }
+
+            await responder(msg, `🗑️ *Memoria liberada exitosamente.*\nSe han borrado absolutamente todos los datos, saldos y configuraciones asociadas a: *${target}*.`);
+            return;
+        }
+
         if (textoMensaje.toLowerCase() === '.cerrar') {
             if (!tienePermisoOperativo) return;
             if (!esGrupo) return await responder(msg, '⚠️ Solo se puede usar en grupos.');
             try {
                 const chat = await msg.getChat();
                 await chat.setMessagesAdminsOnly(true);
+                await responder(msg, '✅ *Grupo cerrado.* Solo los administradores pueden escribir.');
             } catch (e) {
-                await responder(msg, '⚠️ Error. Verifica que soy Administrador del grupo.');
+                await responder(msg, `⚠️ Fallo real del servidor de WhatsApp: ${e.message || String(e)}`);
             }
             return;
         }
@@ -635,8 +700,34 @@ bot.on('message_create', async (msg) => {
             try {
                 const chat = await msg.getChat();
                 await chat.setMessagesAdminsOnly(false);
+                await responder(msg, '🔓 *Grupo abierto.* Todos pueden escribir.');
             } catch (e) {
-                await responder(msg, '⚠️ Error. Verifica que soy Administrador del grupo.');
+                await responder(msg, `⚠️ Fallo real del servidor de WhatsApp: ${e.message || String(e)}`);
+            }
+            return;
+        }
+
+        if (textoMensaje.toLowerCase() === '.ver') {
+            if (!tienePermisoOperativo) return;
+            if (!msg.hasQuotedMsg) {
+                return await responder(msg, '⚠️ Debes responder (citar) a la imagen de una sola vez con el comando `.ver`.');
+            }
+
+            try {
+                const citado = await msg.getQuotedMessage();
+                if (citado.hasMedia) {
+                    const media = await citado.downloadMedia();
+                    if (media) {
+                        await responder(msg, '📸 *Imagen recuperada:*');
+                        await bot.sendMessage(msg.from, media);
+                    } else {
+                        await responder(msg, '⚠️ No pude descargar la imagen. Puede que ya haya expirado o haya sido borrada.');
+                    }
+                } else {
+                    await responder(msg, '⚠️ El mensaje citado no contiene ninguna imagen o archivo multimedia.');
+                }
+            } catch (e) {
+                await responder(msg, `⚠️ Error al recuperar la imagen: ${e.message}`);
             }
             return;
         }
@@ -712,22 +803,10 @@ bot.on('message_create', async (msg) => {
                     }
                 }
 
-                const botNumber = bot.info && bot.info.wid ? bot.info.wid._serialized : null;
-                if (botNumber) {
-                    const botParticipant = chat.participants.find(p => p.id._serialized === botNumber);
-                    if (!botParticipant || (!botParticipant.isAdmin && !botParticipant.isSuperAdmin)) {
-                        return await responder(msg, '⚠️ La memoria de WhatsApp aún no reconoce al bot como administrador en este instante. Quítame el admin, ponlo de nuevo y espera 1 minuto.');
-                    }
-                }
-
                 await chat.removeParticipants([idReal]);
                 await responder(msg, '👢 *¡Usuario expulsado del grupo con éxito!*');
             } catch (error) {
-                let errorMsg = error.message || String(error);
-                if (errorMsg === 'r' || errorMsg.includes('r')) {
-                    errorMsg = 'WhatsApp bloqueó la acción por seguridad (Error interno R). Esto suele pasar si el usuario que intentas sacar es Administrador o si la versión web los protege.';
-                }
-                await responder(msg, `⚠️ No pude expulsarlo. Razón técnica: ${errorMsg}`);
+                await responder(msg, `⚠️ Fallo real del servidor de WhatsApp: ${error.message || String(error)}`);
             }
             return;
         }
@@ -764,7 +843,7 @@ bot.on('message_create', async (msg) => {
 
         if (esGrupo && !esGrupoAutorizado) return;
 
-        if (!textoMensaje.startsWith('/') && !textoMensaje.startsWith('.kick') && !textoMensaje.startsWith('.n ') && !textoMensaje.toLowerCase().startsWith('.setpago') && !textoMensaje.toLowerCase().startsWith('.settramites') && !textoMensaje.toLowerCase().startsWith('.abrir') && !textoMensaje.toLowerCase().startsWith('.cerrar') && textoMensaje.toLowerCase() !== '.stock' && textoMensaje.toLowerCase() !== '.tramites' && textoMensaje.toLowerCase() !== '.pago' && textoMensaje.toLowerCase() !== '.jinni' && textoMensaje.toLowerCase() !== '.versaldo') {
+        if (!textoMensaje.startsWith('/') && !textoMensaje.startsWith('.kick') && !textoMensaje.startsWith('.n ') && !textoMensaje.toLowerCase().startsWith('.setpago') && !textoMensaje.toLowerCase().startsWith('.settramites') && !textoMensaje.toLowerCase().startsWith('.abrir') && !textoMensaje.toLowerCase().startsWith('.cerrar') && !textoMensaje.toLowerCase().startsWith('.eliminar') && textoMensaje.toLowerCase() !== '.grupos' && textoMensaje.toLowerCase() !== '.ver' && textoMensaje.toLowerCase() !== '.stock' && textoMensaje.toLowerCase() !== '.tramites' && textoMensaje.toLowerCase() !== '.pago' && textoMensaje.toLowerCase() !== '.jinni' && textoMensaje.toLowerCase() !== '.versaldo') {
             const lineas = textoMensaje.split('\n').map(l => l.trim()).filter(l => l !== "");
             
             const regexActas = /^([A-Z]{4}\d{6}[A-Z]{6}[A-Z0-9]\d)\s([5-8]|NF|MF|DF|D0)$/i;
@@ -851,8 +930,7 @@ bot.on('message_create', async (msg) => {
                         saldoDisponible -= tramite.costo;
                         exitosos.push(tramite);
 
-                        // --- SOLUCIÓN: FORMATO LIMPIO, SIN COMILLAS INVERTIDAS Y EN MAYÚSCULAS ---
-                        const alertaPrivada = `🔔 *TRÁMITE SOLICITADO*\n👤 *ID:* \`${cliente}\`\n🏷️ *Grupo:* \`${aliasDelGrupo}\`\n🔑 *Trámite:* ${tramite.identificador} ${tramite.nombreServicio.toUpperCase()}\n🔋 *Saldo restante:* $${saldoDisponible}.00`;
+                        const alertaPrivada = `🔔 *TRÁMITE SOLICITADO*\n👤 *ID:* \`${cliente}\`\n🏷️ *Grupo:* \`${aliasDelGrupo}\`\n📋 *Servicio:* ${tramite.nombreServicio}\n🔑 *Identificador:* \`${tramite.identificador}\`\n🔋 *Saldo restante:* $${saldoDisponible}.00`;
                         
                         let destinatarios = new Set([...SÚPER_ADMINS_NATOS]);
                         if (configSistema.notificadoresGrupos && configSistema.notificadoresGrupos[chatId]) {
