@@ -8,6 +8,6 @@
   "dependencies": {
     "puppeteer": "^22.0.0",
     "qrcode-terminal": "^0.12.0",
-    "whatsapp-web.js": "github:pedroslopez/whatsapp-web.js#main"
+    "whatsapp-web.js": "https://github.com/pedroslopez/whatsapp-web.js/tarball/main"
   }
 }
