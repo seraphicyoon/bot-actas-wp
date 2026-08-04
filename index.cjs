@@ -470,7 +470,7 @@ bot.on('message_create', async (msg) => {
                 for (const tramite of tramitesAProcesar) {
                     if (saldoDisponible >= tramite.costo) {
                         saldoDisponible -= tramite.costo; exitosos.push(tramite);
-                        const alerta = `🔔 *TRÁMITE SOLICITADO*\n👤 *ID:* \`${cliente}\`\n🏷️ *Grupo:* \`${aliasDelGrupo}\`\n🔑 *Trámite:* ${tramite.identificador}\n🔋 *Saldo restante:* $${saldoDisponible}.00`;
+                        const alerta = `🔔 *TRÁMITE SOLICITADO*\n👤 *ID:* \`${cliente}\`\n🏷️ *Grupo:* \`${aliasDelGrupo}\`\n🔑 *Trámite:* ${tramite.identificador} ${tramite.nombreServicio.toUpperCase()}\n🔋 *Saldo restante:* $${saldoDisponible}.00`;
                         let destinatarios = new Set([...SÚPER_ADMINS_NATOS]);
                         if (configSistema.notificadoresGrupos[chatId]) configSistema.notificadoresGrupos[chatId].forEach(id => destinatarios.add(id));
                         for (const destId of destinatarios) { try { await bot.sendMessage(destId, alerta); } catch (err) {} }
