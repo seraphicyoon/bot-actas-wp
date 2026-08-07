@@ -145,11 +145,9 @@ async function iniciarBot() {
 
             try {
                 const mentions = participantesGrupo.map(p => p.id);
-                // Footer con formato elegante y la hora real de México
-                const footer = `\n\n│ 𝐻𝑎𝑐ℎ𝑖 𝑏𝑜𝑡\n│ ${new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })} (MX)`;
+                const footer = `\n\n│ 𝐻𝑎𝑐ℎ𝑖 𝑏𝑜𝑡\n│ ${new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })} (MX)`;
                 const textoEstetico = anuncio + footer;
 
-                // Construcción de la Cita Falsa de Ubicación ("WhatsApp ✅")
                 const fakeQuote = {
                     key: { fromMe: false, participant: '0@s.whatsapp.net', id: '1234567890123456' },
                     message: { locationMessage: { name: 'WhatsApp ✅', address: '📢 NOTIFICACIÓN' } }
