@@ -1,6 +1,6 @@
 {
-  "name": "naevis-bot",
-  "version": "2.0.0",
+  "name": "naevis-bot-pro",
+  "version": "3.0.0",
   "main": "index.cjs",
   "scripts": {
     "start": "node index.cjs"
