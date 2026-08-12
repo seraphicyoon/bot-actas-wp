@@ -1,0 +1,15 @@
+{
+    "gruposAutorizados": [
+        "120363427829655119@g.us",
+        "120363430384185944@g.us"
+    ],
+    "vendedores": [],
+    "superAdmins": [],
+    "gruposDestino": {},
+    "precios": {},
+    "propietariosGrupos": {},
+    "notificadoresGrupos": {},
+    "stockGrupos": {},
+    "pagosGrupos": {},
+    "tramitesGrupos": {}
+}
