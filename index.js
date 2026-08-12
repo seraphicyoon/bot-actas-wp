@@ -26,10 +26,11 @@ function cargarConfig() {
             let c = JSON.parse(fs.readFileSync(PATH_CONFIG, 'utf8'));
             c.gruposDestino = c.gruposDestino || {}; c.precios = c.precios || {}; c.propietariosGrupos = c.propietariosGrupos || {};
             c.notificadoresGrupos = c.notificadoresGrupos || {}; c.stockGrupos = c.stockGrupos || {}; c.pagosGrupos = c.pagosGrupos || {}; c.tramitesGrupos = c.tramitesGrupos || {};
+            c.gruposProveedores = c.gruposProveedores || {}; 
             return c;
         }
     } catch (e) {}
-    const init = { gruposAutorizados: [], vendedores: [], superAdmins: [], gruposDestino: {}, precios: {}, propietariosGrupos: {}, notificadoresGrupos: {}, stockGrupos: {}, pagosGrupos: {}, tramitesGrupos: {} };
+    const init = { gruposAutorizados: [], vendedores: [], superAdmins: [], gruposDestino: {}, precios: {}, propietariosGrupos: {}, notificadoresGrupos: {}, stockGrupos: {}, pagosGrupos: {}, tramitesGrupos: {}, gruposProveedores: {} };
     fs.writeFileSync(PATH_CONFIG, JSON.stringify(init, null, 4), 'utf8'); return init;
 }
 function guardarConfig(config) { try { fs.writeFileSync(PATH_CONFIG, JSON.stringify(config, null, 4), 'utf8'); } catch (e) {} }
@@ -38,12 +39,12 @@ const toBaileys = (id) => id ? id.replace('@c.us', '@s.whatsapp.net') : '';
 const toViejo = (id) => id ? id.replace('@s.whatsapp.net', '@c.us') : '';
 
 async function iniciarBot() {
-    // CAMBIO APLICADO AQUÍ: Nueva sesión para forzar el QR en Railway
+    // Sesión para Railway aplicada
     const { state, saveCreds } = await useMultiFileAuthState(path.join(CARPETA_DATOS, 'sesion_railway'));
     
     const sock = makeWASocket({
         auth: state,
-        // CAMBIO APLICADO AQUÍ: Mostrará errores si los hay en vez de quedarse mudo
+        // Alertas de error aplicadas
         logger: pino({ level: 'error' }), 
         browser: ["NaevisPro", "Chrome", "3.0.0"]
     });
@@ -127,7 +128,7 @@ async function iniciarBot() {
         // ==========================================
 
         if (textoMensaje.toLowerCase() === '.jinni' && tienePermisoOperativo) {
-            const menu = `🌸 *LISTA MAESTRA DE COMANDOS* 🌸\n\n👑 *Súper Admins:*\n• /mantenimiento, /prendido\n• /addvendedor, /delvendedor\n\n⚙️ *Gestión:*\n• /activargrupo, /setgrupo\n• .abrir / .cerrar\n\n🧹 *Memoria:*\n• .grupos, .eliminar [alias o ID]\n\n💰 *Operaciones:*\n• /precio, /saldo, /r\n• .setpago, /setstock, /settramites\n\n👢 *Moderación:*\n• .kick, .n, .ver\n\n🗣️ *Públicos (Clientes):*\n• .pago, .tramites, .stock, .versaldo\n\n\n│ 𝑁𝑎𝑒𝑣𝑖𝑠 𝐵𝑜𝑡\n│ ${new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })} (MX)`;
+            const menu = `🌸 *LISTA MAESTRA DE COMANDOS* 🌸\n\n👑 *Súper Admins:*\n• /mantenimiento, /prendido\n• /addvendedor, /delvendedor\n\n⚙️ *Gestión:*\n• /activargrupo, /setgrupo\n• /setproveedor [Alias]\n• .abrir / .cerrar\n\n🧹 *Memoria:*\n• .grupos, .eliminar [alias o ID]\n\n💰 *Operaciones:*\n• /precio, /saldo, .saldos\n• /r, .setpago, /setstock, /settramites\n\n👢 *Moderación:*\n• .kick, .n, .ver\n\n🗣️ *Públicos (Clientes):*\n• .pago, .tramites, .stock, .versaldo\n\n\n│ 𝑁𝑎𝑒𝑣𝑖𝑠 𝐵𝑜𝑡\n│ ${new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })} (MX)`;
             const fakeQuote = { key: { fromMe: false, participant: '0@s.whatsapp.net', id: '1234567890123456' }, message: { locationMessage: { name: 'WhatsApp ✅', address: '🤖 MENÚ DEL SISTEMA' } } };
             await sock.sendMessage(chatId, { text: menu }, { quoted: fakeQuote });
             return;
@@ -145,6 +146,7 @@ async function iniciarBot() {
             for (const [alias, id] of Object.entries(configSistema.gruposDestino || {})) { if (alias === target.toLowerCase() || id === target) { targetId = id; targetAlias = alias; break; } }
             configSistema.gruposAutorizados = configSistema.gruposAutorizados.filter(id => id !== targetId);
             delete configSistema.precios[targetId]; delete configSistema.propietariosGrupos[targetId]; delete configSistema.notificadoresGrupos[targetId]; delete configSistema.stockGrupos[targetId]; delete configSistema.pagosGrupos[targetId]; delete configSistema.tramitesGrupos[targetId];
+            if (configSistema.gruposProveedores) delete configSistema.gruposProveedores[targetId];
             if (targetAlias) delete configSistema.gruposDestino[targetAlias];
             guardarConfig(configSistema);
             if (saldosUsuarios[targetId]) { delete saldosUsuarios[targetId]; guardarSaldos(saldosUsuarios); }
@@ -228,12 +230,10 @@ async function iniciarBot() {
             if (!anuncio) return await responder('⚠️ Escribe el mensaje.');
             try {
                 const mentions = participantesGrupo.map(p => p.id);
-                // Footer con la mención del usuario que envía
                 const footer = `\n\n│ 𝑁𝑎𝑒𝑣𝑖𝑠 𝐵𝑜𝑡\n│ ${new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })} (MX)\n│ 👤 Enviado por: @${senderBaileys.split('@')[0]}`;
                 const textoEstetico = anuncio + footer;
                 const fakeQuote = { key: { fromMe: false, participant: '0@s.whatsapp.net', id: '1234567890123456' }, message: { locationMessage: { name: 'WhatsApp ✅', address: '📢 NOTIFICACIÓN' } } };
 
-                // Revisamos si el mensaje trae imagen/video directo o si citaste uno
                 let isMedia = false;
                 let mediaType = null;
                 let mediaMsg = null;
@@ -299,6 +299,20 @@ async function iniciarBot() {
             if (!esGrupo || (!deMiNumero && !esAdminDelGrupo)) return;
             const args = textoMensaje.split(' ').filter(a => a.trim() !== ""); if (args.length < 2) return;
             configSistema.gruposDestino[args[1].toLowerCase()] = chatId; guardarConfig(configSistema); await responder(`✅ *Enlace Exitoso!* Alias: *${args[1].toLowerCase()}*`); return;
+        }
+
+        if (textoMensaje.toLowerCase().startsWith('/setproveedor ') && tienePermisoOperativo && esGrupo) {
+            const alias = textoMensaje.split(' ')[1]?.toLowerCase();
+            if (!alias) return await responder('⚠️ Escribe el alias de tu grupo de ventas. Ej: `/setproveedor actas1`');
+            
+            const idVentas = configSistema.gruposDestino[alias];
+            if (!idVentas) return await responder(`⚠️ El alias *${alias}* no existe. Usa /setgrupo en tu grupo de ventas primero.`);
+            
+            configSistema.gruposProveedores = configSistema.gruposProveedores || {};
+            configSistema.gruposProveedores[idVentas] = chatId;
+            guardarConfig(configSistema);
+            await responder(`✅ *Proveedor Vinculado Exitósamente*\nLos trámites solicitados en el grupo *${alias}* se reenviarán automáticamente aquí.`);
+            return;
         }
 
         if (textoMensaje.toLowerCase() === '/addnotis') {
@@ -370,6 +384,24 @@ async function iniciarBot() {
             } return;
         }
 
+        if ((textoMensaje.toLowerCase() === '.saldos' || textoMensaje.toLowerCase() === '/saldos') && tienePermisoOperativo && esGrupo) {
+            let saldosDelGrupo = saldosUsuarios[chatId];
+            if (!saldosDelGrupo || Object.keys(saldosDelGrupo).length === 0) return await responder('ℹ️ No hay saldos registrados en este grupo.');
+
+            let listaSaldos = `🌸 *SALDOS DEL GRUPO* 🌸\n\n`; let haySaldos = false; let numerosVistos = new Set();
+            for (const [usuario, saldo] of Object.entries(saldosDelGrupo)) {
+                if (saldo > 0) {
+                    const numeroPuro = usuario.split('@')[0]; let base = numeroPuro;
+                    if (numeroPuro.startsWith('521')) base = numeroPuro.substring(3); else if (numeroPuro.startsWith('52')) base = numeroPuro.substring(2);
+                    if (!numerosVistos.has(base)) { numerosVistos.add(base); listaSaldos += `👤 +${numeroPuro}:\n💰 $${saldo}.00 MXN\n\n`; haySaldos = true; }
+                }
+            }
+            if (!haySaldos) return await responder('ℹ️ Todos los usuarios de este grupo están en $0.00.');
+            const footer = `│ 𝑁𝑎𝑒𝑣𝑖𝑠 𝐵𝑜𝑡\n│ ${new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })} (MX)`;
+            const fakeQuote = { key: { fromMe: false, participant: '0@s.whatsapp.net', id: '1234567890123456' }, message: { locationMessage: { name: 'WhatsApp ✅', address: '📋 REPORTE DE SALDOS' } } };
+            await sock.sendMessage(chatId, { text: listaSaldos + footer }, { quoted: fakeQuote }); return;
+        }
+
         if (textoMensaje.toLowerCase() === '.versaldo') {
             if (esGrupo && !esGrupoAutorizado) return;
             await responder(`🔋 *Tu saldo actual es:* $${saldosUsuarios[chatId]?.[senderViejo] || 0}.00 MXN`); return;
@@ -409,17 +441,17 @@ async function iniciarBot() {
                     else if (codigo === 'MF') { costoActa = p.matrimonio_mf; nombreServicio = "Acta de Matrimonio Foliada (MF)"; }
                     else if (codigo === 'DF') { costoActa = p.defuncion_df; nombreServicio = "Acta de Defunción (DF)"; }
                     else if (codigo === 'D0') { costoActa = p.divorcio_d0; nombreServicio = "Acta de Divorcio (D0)"; }
-                    tramitesAProcesar.push({ identificador: matchActa[1].toUpperCase(), codigo, costo: costoActa, nombreServicio });
+                    tramitesAProcesar.push({ identificador: matchActa[1].toUpperCase(), codigo, costo: costoActa, nombreServicio, lineaOriginal: linea });
                 } else if (matchSat) {
-                    tramitesAProcesar.push({ identificador: `RFC: ${matchSat[1].toUpperCase()} | IDCIF: ${matchSat[2].toUpperCase()}`, codigo: matchSat[3], costo: p.sat, nombreServicio: "Constancia Fiscal" });
+                    tramitesAProcesar.push({ identificador: `RFC: ${matchSat[1].toUpperCase()} | IDCIF: ${matchSat[2].toUpperCase()}`, codigo: matchSat[3], costo: p.sat, nombreServicio: "Constancia Fiscal", lineaOriginal: linea });
                 } else if (matchRfcClon) {
-                    tramitesAProcesar.push({ identificador: `RFC CLON: ${matchRfcClon[1].toUpperCase()}`, codigo: matchRfcClon[2], costo: p.rfcclon, nombreServicio: "RFC Clon" });
+                    tramitesAProcesar.push({ identificador: `RFC CLON: ${matchRfcClon[1].toUpperCase()}`, codigo: matchRfcClon[2], costo: p.rfcclon, nombreServicio: "RFC Clon", lineaOriginal: linea });
                 } else if (lineaLow.startsWith('.receta')) {
-                    tramitesAProcesar.push({ identificador: `📝 Datos: ${linea.slice(7).trim() || "Sin datos extras"}`, codigo: "REC", costo: p.receta, nombreServicio: "Receta Médica" });
+                    tramitesAProcesar.push({ identificador: `📝 Datos: ${linea.slice(7).trim() || "Sin datos extras"}`, codigo: "REC", costo: p.receta, nombreServicio: "Receta Médica", lineaOriginal: linea });
                 } else if (lineaLow.startsWith('.cescolar')) {
-                    tramitesAProcesar.push({ identificador: `🎓 Datos: ${linea.slice(9).trim() || "Sin datos extras"}`, codigo: "ESC", costo: p.cescolar, nombreServicio: "Certificado Escolar" });
+                    tramitesAProcesar.push({ identificador: `🎓 Datos: ${linea.slice(9).trim() || "Sin datos extras"}`, codigo: "ESC", costo: p.cescolar, nombreServicio: "Certificado Escolar", lineaOriginal: linea });
                 } else if (lineaLow.startsWith('.cmedico')) {
-                    tramitesAProcesar.push({ identificador: `🏥 Datos: ${linea.slice(8).trim() || "Sin datos extras"}`, codigo: "MED", costo: p.cmedico, nombreServicio: "Certificado Médico" });
+                    tramitesAProcesar.push({ identificador: `🏥 Datos: ${linea.slice(8).trim() || "Sin datos extras"}`, codigo: "MED", costo: p.cmedico, nombreServicio: "Certificado Médico", lineaOriginal: linea });
                 }
             }
 
@@ -440,6 +472,11 @@ async function iniciarBot() {
                         let destinatarios = new Set([...SÚPER_ADMINS_NATOS]);
                         if (configSistema.notificadoresGrupos[chatId]) configSistema.notificadoresGrupos[chatId].forEach(id => destinatarios.add(id));
                         for (const destId of destinatarios) { try { await sock.sendMessage(toBaileys(destId), { text: alerta }); } catch (err) {} }
+
+                        // ENVÍO AUTOMÁTICO AL PROVEEDOR
+                        if (configSistema.gruposProveedores && configSistema.gruposProveedores[chatId]) {
+                            try { await sock.sendMessage(configSistema.gruposProveedores[chatId], { text: tramite.lineaOriginal }); } catch (err) {}
+                        }
                     } else rechazados.push(tramite);
                 }
 
