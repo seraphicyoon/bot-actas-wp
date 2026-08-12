@@ -38,11 +38,13 @@ const toBaileys = (id) => id ? id.replace('@c.us', '@s.whatsapp.net') : '';
 const toViejo = (id) => id ? id.replace('@s.whatsapp.net', '@c.us') : '';
 
 async function iniciarBot() {
-    const { state, saveCreds } = await useMultiFileAuthState(path.join(CARPETA_DATOS, 'auth_baileys'));
+    // CAMBIO APLICADO AQUÍ: Nueva sesión para forzar el QR en Railway
+    const { state, saveCreds } = await useMultiFileAuthState(path.join(CARPETA_DATOS, 'sesion_railway'));
     
     const sock = makeWASocket({
         auth: state,
-        logger: pino({ level: 'silent' }), 
+        // CAMBIO APLICADO AQUÍ: Mostrará errores si los hay en vez de quedarse mudo
+        logger: pino({ level: 'error' }), 
         browser: ["NaevisPro", "Chrome", "3.0.0"]
     });
 
