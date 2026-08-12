@@ -39,7 +39,6 @@ const toBaileys = (id) => id ? id.replace('@c.us', '@s.whatsapp.net') : '';
 const toViejo = (id) => id ? id.replace('@s.whatsapp.net', '@c.us') : '';
 
 async function iniciarBot() {
-    // CAMBIO APLICADO: Nombre de sesión completamente nuevo para forzar a Railway a pedir QR
     const { state, saveCreds } = await useMultiFileAuthState(path.join(CARPETA_DATOS, 'sesion_naevis_final'));
     
     const sock = makeWASocket({
@@ -348,14 +347,21 @@ async function iniciarBot() {
         if (textoMensaje.toLowerCase().startsWith('/precio ') && tienePermisoOperativo && esGrupo) {
             const args = textoMensaje.split(' ').filter(a => a.trim() !== ""); if (args.length < 3) return;
             let tipoServicio = args[1].toLowerCase(); const nuevoPrecio = parseInt(args[2], 10); if (isNaN(nuevoPrecio) || nuevoPrecio < 1) return;
-            if (!configSistema.precios[chatId]) configSistema.precios[chatId] = { nacimiento: PRECIO_NACIMIENTO, nacimiento_nf: PRECIO_NACIMIENTO_NF, matrimonio: PRECIO_MATRIMONIO, matrimonio_mf: PRECIO_MATRIMONIO_MF, defuncion: PRECIO_DEFUNCION, defuncion_df: PRECIO_DEFUNCION_DF, divorcio: PRECIO_DIVORCIO, divorcio_d0: PRECIO_DIVORCIO_D0, sat: PRECIO_SAT, rfcclon: PRECIO_RFCCLON, receta: PRECIO_RECETA, cescolar: PRECIO_CESCOLAR, cmedico: PRECIO_CMEDICO };
+            
+            // CAMBIO APLICADO: Inicia los precios del grupo copiándolos correctamente de PRECIOS_BASE
+            if (!configSistema.precios[chatId]) configSistema.precios[chatId] = { ...PRECIOS_BASE };
+            
             if (tipoServicio === 'acta') {
                 configSistema.precios[chatId].nacimiento = nuevoPrecio; configSistema.precios[chatId].nacimiento_nf = nuevoPrecio;
                 configSistema.precios[chatId].matrimonio = nuevoPrecio; configSistema.precios[chatId].matrimonio_mf = nuevoPrecio;
                 configSistema.precios[chatId].defuncion = nuevoPrecio; configSistema.precios[chatId].defuncion_df = nuevoPrecio;
                 configSistema.precios[chatId].divorcio = nuevoPrecio; configSistema.precios[chatId].divorcio_d0 = nuevoPrecio;
                 guardarConfig(configSistema); await responder(`✅ *Precios actualizados*\n📋 Todas las Actas ahora cuestan: $${nuevoPrecio}.00`);
-            } else { configSistema.precios[chatId][tipoServicio] = nuevoPrecio; guardarConfig(configSistema); await responder(`✅ *Nuevo precio*\n📋 ${tipoServicio.toUpperCase()}\n💵 $${nuevoPrecio}.00`); } return;
+            } else { 
+                configSistema.precios[chatId][tipoServicio] = nuevoPrecio; 
+                guardarConfig(configSistema); 
+                await responder(`✅ *Nuevo precio*\n📋 ${tipoServicio.toUpperCase()}\n💵 $${nuevoPrecio}.00`); 
+            } return;
         }
 
         if (textoMensaje.toLowerCase().startsWith('/saldo') && esGrupo && tienePermisoOperativo) {
