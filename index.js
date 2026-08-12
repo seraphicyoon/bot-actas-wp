@@ -39,12 +39,11 @@ const toBaileys = (id) => id ? id.replace('@c.us', '@s.whatsapp.net') : '';
 const toViejo = (id) => id ? id.replace('@s.whatsapp.net', '@c.us') : '';
 
 async function iniciarBot() {
-    // Sesión para Railway aplicada
-    const { state, saveCreds } = await useMultiFileAuthState(path.join(CARPETA_DATOS, 'sesion_railway'));
+    // CAMBIO APLICADO: Nombre de sesión completamente nuevo para forzar a Railway a pedir QR
+    const { state, saveCreds } = await useMultiFileAuthState(path.join(CARPETA_DATOS, 'sesion_naevis_final'));
     
     const sock = makeWASocket({
         auth: state,
-        // Alertas de error aplicadas
         logger: pino({ level: 'error' }), 
         browser: ["NaevisPro", "Chrome", "3.0.0"]
     });
