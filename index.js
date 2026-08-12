@@ -472,8 +472,8 @@ async function iniciarBot() {
                         if (configSistema.notificadoresGrupos[chatId]) configSistema.notificadoresGrupos[chatId].forEach(id => destinatarios.add(id));
                         for (const destId of destinatarios) { try { await sock.sendMessage(toBaileys(destId), { text: alerta }); } catch (err) {} }
 
-                        // ENVÍO AUTOMÁTICO AL PROVEEDOR
-                        if (configSistema.gruposProveedores && configSistema.gruposProveedores[chatId]) {
+                        // ENVÍO AUTOMÁTICO AL PROVEEDOR (SOLO ACTAS)
+                        if (configSistema.gruposProveedores && configSistema.gruposProveedores[chatId] && tramite.nombreServicio.startsWith('Acta')) {
                             try { await sock.sendMessage(configSistema.gruposProveedores[chatId], { text: tramite.lineaOriginal }); } catch (err) {}
                         }
                     } else rechazados.push(tramite);
