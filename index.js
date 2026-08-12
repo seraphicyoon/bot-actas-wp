@@ -226,9 +226,39 @@ async function iniciarBot() {
             if (!anuncio) return await responder('⚠️ Escribe el mensaje.');
             try {
                 const mentions = participantesGrupo.map(p => p.id);
-                const footer = `\n\n│ 𝑁𝑎𝑒𝑣𝑖𝑠 𝐵𝑜𝑡\n│ ${new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })} (MX)`;
+                // Footer con la mención del usuario que envía
+                const footer = `\n\n│ 𝑁𝑎𝑒𝑣𝑖𝑠 𝐵𝑜𝑡\n│ ${new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })} (MX)\n│ 👤 Enviado por: @${senderBaileys.split('@')[0]}`;
+                const textoEstetico = anuncio + footer;
                 const fakeQuote = { key: { fromMe: false, participant: '0@s.whatsapp.net', id: '1234567890123456' }, message: { locationMessage: { name: 'WhatsApp ✅', address: '📢 NOTIFICACIÓN' } } };
-                await sock.sendMessage(chatId, { text: anuncio + footer, mentions }, { quoted: fakeQuote });
+
+                // Revisamos si el mensaje trae imagen/video directo o si citaste uno
+                let isMedia = false;
+                let mediaType = null;
+                let mediaMsg = null;
+
+                if (msg.message.imageMessage) { 
+                    isMedia = true; mediaType = 'image'; mediaMsg = msg.message.imageMessage; 
+                } else if (msg.message.videoMessage) { 
+                    isMedia = true; mediaType = 'video'; mediaMsg = msg.message.videoMessage; 
+                } else {
+                    const quoted = msg.message.extendedTextMessage?.contextInfo?.quotedMessage;
+                    if (quoted?.imageMessage) { 
+                        isMedia = true; mediaType = 'image'; mediaMsg = quoted.imageMessage; 
+                    } else if (quoted?.videoMessage) { 
+                        isMedia = true; mediaType = 'video'; mediaMsg = quoted.videoMessage; 
+                    }
+                }
+
+                if (isMedia && mediaMsg) {
+                    const stream = await downloadContentFromMessage(mediaMsg, mediaType);
+                    let buffer = Buffer.from([]);
+                    for await(const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+                    
+                    if (mediaType === 'image') await sock.sendMessage(chatId, { image: buffer, caption: textoEstetico, mentions }, { quoted: fakeQuote });
+                    else await sock.sendMessage(chatId, { video: buffer, caption: textoEstetico, mentions }, { quoted: fakeQuote });
+                } else {
+                    await sock.sendMessage(chatId, { text: textoEstetico, mentions }, { quoted: fakeQuote });
+                }
             } catch (e) { await responder(`⚠️ Error: ${e.message}`); } return;
         }
 
