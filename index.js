@@ -27,12 +27,14 @@ function cargarConfig() {
             c.gruposDestino = c.gruposDestino || {}; c.precios = c.precios || {}; c.propietariosGrupos = c.propietariosGrupos || {};
             c.notificadoresGrupos = c.notificadoresGrupos || {}; c.stockGrupos = c.stockGrupos || {}; c.pagosGrupos = c.pagosGrupos || {}; c.tramitesGrupos = c.tramitesGrupos || {};
             c.gruposProveedores = c.gruposProveedores || {}; 
-            c.pendientes = c.pendientes || {}; // Memoria de trámites
-            c.autoMode = c.autoMode || {}; // Interruptor de piloto automático
+            c.pendientes = c.pendientes || {}; 
+            c.autoMode = c.autoMode || {}; 
+            c.comprasUsuarios = c.comprasUsuarios || {}; // Memoria de Lealtad
+            c.loyaltyMode = c.loyaltyMode || {}; // Interruptor de Lealtad
             return c;
         }
     } catch (e) {}
-    const init = { gruposAutorizados: [], vendedores: [], superAdmins: [], gruposDestino: {}, precios: {}, propietariosGrupos: {}, notificadoresGrupos: {}, stockGrupos: {}, pagosGrupos: {}, tramitesGrupos: {}, gruposProveedores: {}, pendientes: {}, autoMode: {} };
+    const init = { gruposAutorizados: [], vendedores: [], superAdmins: [], gruposDestino: {}, precios: {}, propietariosGrupos: {}, notificadoresGrupos: {}, stockGrupos: {}, pagosGrupos: {}, tramitesGrupos: {}, gruposProveedores: {}, pendientes: {}, autoMode: {}, comprasUsuarios: {}, loyaltyMode: {} };
     fs.writeFileSync(PATH_CONFIG, JSON.stringify(init, null, 4), 'utf8'); return init;
 }
 function guardarConfig(config) { try { fs.writeFileSync(PATH_CONFIG, JSON.stringify(config, null, 4), 'utf8'); } catch (e) {} }
@@ -120,7 +122,6 @@ async function iniciarBot() {
                         const grupoVentas = datos.grupoVentas;
                         const cliente = datos.cliente;
 
-                        // Entregamos solo si el Auto Mode está activo
                         if (configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
                             const msgToForward = { key: msg.key, message: msg.message };
                             try {
@@ -143,7 +144,6 @@ async function iniciarBot() {
             
             if (esMensajeDeError && configSistema.pendientes) {
                 for (const [idTramite, datos] of Object.entries(configSistema.pendientes)) {
-                    // Si el proveedor escribió la CURP en el mensaje de error
                     if (textoMensaje.toUpperCase().includes(idTramite.toUpperCase())) {
                         const grupoVentas = datos.grupoVentas;
                         const cliente = datos.cliente;
@@ -157,7 +157,14 @@ async function iniciarBot() {
                                 saldosUsuarios[grupoVentas][cliente] += costo;
                                 guardarSaldos(saldosUsuarios);
 
-                                // 2.2 Avisamos al cliente (Cambiado a modo incógnito)
+                                // 2.1.5 Si la Lealtad está activa, restamos el punto porque la venta no se completó
+                                if (configSistema.loyaltyMode && configSistema.loyaltyMode[grupoVentas]) {
+                                    if (configSistema.comprasUsuarios && configSistema.comprasUsuarios[grupoVentas] && configSistema.comprasUsuarios[grupoVentas][cliente] > 0) {
+                                        configSistema.comprasUsuarios[grupoVentas][cliente] -= 1;
+                                    }
+                                }
+
+                                // 2.2 Avisamos al cliente (Modo incógnito)
                                 const avisoReembolso = `⚠️ *TRÁMITE NO ENCONTRADO*\n@${cliente.split('@')[0]}, el sistema nos indica que el trámite con identificador *${idTramite}* no se encontró.\n\n💰 Se ha devuelto automáticamente *$${costo}.00* a tu saldo.\n🔋 Saldo actual: $${saldosUsuarios[grupoVentas][cliente]}.00`;
                                 await sock.sendMessage(grupoVentas, { text: avisoReembolso, mentions: [toBaileys(cliente)] });
 
@@ -198,59 +205,64 @@ async function iniciarBot() {
             const menu = `🌸 *GUÍA MAESTRA DE NAEVIS BOT* 🌸
 ¡Hola! Aquí tienes la explicación de todos los comandos disponibles:
 
-👑 *SÚPER ADMINS (Tú)*
-• \`/mantenimiento\` ó \`/apagado\` : Apaga el bot (Avisa a todos los grupos).
-• \`/prendido\` : Enciende el bot (Avisa a todos los grupos).
+👑 *SÚPER ADMINS (Propietarios)*
+• \`/mantenimiento\` ó \`/apagado\` : Apaga el bot (Avisa a los grupos).
+• \`/prendido\` : Enciende el bot nuevamente.
 • \`/addvendedor [@user]\` : Etiqueta a alguien para darle permisos de administrador del bot.
-• \`/delvendedor [@user]\` : Etiqueta a alguien para quitarle los permisos.
+• \`/delvendedor [@user]\` : Quita los permisos de vendedor.
 
 ⚙️ *GESTIÓN DE GRUPOS*
-• \`/activargrupo\` : Enciende el bot en el grupo donde lo escribas.
-• \`/setgrupo [alias]\` : Le pone un nombre corto a tu grupo de ventas (Ej: /setgrupo actas1).
-• \`/setproveedor [alias]\` : *(Escríbelo en el grupo del proveedor)* Conecta al proveedor con tu grupo de ventas.
-• \`.abrir\` / \`.cerrar\` : Abre o cierra el chat del grupo para los clientes.
-• \`/addnotis\` / \`/delnotis\` / \`/vernotis\` : Para configurar si quieres recibir alertas en privado de cada venta.
+• \`/activargrupo\` : Activa el bot en el grupo actual.
+• \`/desactivargrupo\` : Apaga el bot en el grupo actual.
+• \`/setgrupo [alias]\` : Le asigna un nombre corto a tu grupo de ventas (Ej: /setgrupo actas1).
+• \`/setproveedor [alias]\` : *(Se usa en el grupo del proveedor)* Enlaza a tu proveedor con el grupo de ventas.
+• \`.abrir\` / \`.cerrar\` : Abre o cierra el grupo para que los clientes puedan o no escribir.
+• \`/addnotis\` / \`/delnotis\` / \`/vernotis\` : Gestiona quién recibe notificaciones de ventas en privado.
 
-🤖 *PILOTO AUTOMÁTICO*
-• \`/auto\` : Activa la inteligencia del bot (envía los pedidos al proveedor, detecta los PDFs, los entrega al cliente y hace reembolsos si no hay acta).
-• \`/offauto\` : Desactiva la inteligencia (para que tú entregues los trámites a mano).
+🤖 *AUTOMATIZACIÓN Y LEALTAD*
+• \`/auto\` : El bot enviará pedidos, entregará PDFs y hará reembolsos automáticamente.
+• \`/offauto\` : Apaga el piloto automático.
+• \`/lealtad on\` : Activa el regalo de $12 de saldo cada 10 compras para premiar a clientes.
+• \`/lealtad off\` : Apaga el sistema de recompensas.
+• \`/addcompras [@user] [cantidad]\` : Suma puntos manualmente a la tarjeta de un cliente.
 
 🧹 *MEMORIA Y SISTEMA*
 • \`.grupos\` : Muestra la lista de todos tus grupos activos y sus Alias.
-• \`.eliminar [alias ó ID]\` : Borra por completo un grupo de la memoria del bot.
+• \`.eliminar [alias ó ID]\` : Borra por completo un grupo de la base de datos.
 
 💰 *FINANZAS Y VENTAS*
-• \`/precio [acta ó nombre] [$$]\` : Cambia el costo de un servicio. (Ej: /precio acta 18).
-• \`/saldo [@user] [$$]\` : Súmale dinero al cliente. (Ej: /saldo @cliente 100).
-• \`.saldos\` ó \`/saldos\` : Te muestra la lista de todos los clientes que tienen dinero guardado.
-• \`/r [alias] [@user]\` : *(Respondiendo al PDF)* Reenvía el acta manualmente a tu cliente y le avisa.
+• \`/precio [servicio] [$$]\` : Cambia el precio de un trámite. (Ej: /precio acta 18).
+• \`/saldo [@user] [$$]\` : Añade saldo a un cliente. (Ej: /saldo @cliente 100).
+• \`.saldos\` ó \`/saldos\` : Muestra la lista de clientes con dinero a favor.
+• \`/r [alias] [@user]\` : *(Respondiendo a un PDF/Foto)* Reenvía y entrega el archivo manualmente al cliente.
 
-📋 *CONFIGURAR TEXTOS PÚBLICOS*
-• \`.setpago [texto]\` : Escribe aquí los datos de tus tarjetas/cuentas bancarias.
-• \`/settramites [texto]\` : Escribe tu lista de servicios disponibles.
-• \`/setstock [texto]\` : Escribe si tienes perfiles o cuentas disponibles.
+📋 *TEXTOS PÚBLICOS*
+• \`.setpago [texto]\` : Guarda los datos de tus tarjetas/cuentas bancarias.
+• \`/settramites [texto]\` : Guarda la lista de servicios.
+• \`/setstock [texto]\` : Guarda tu inventario.
 
-👢 *MODERACIÓN*
-• \`.kick [@user]\` : Expulsa a un cliente castigado del grupo.
-• \`.n [mensaje]\` : Envía un Anuncio Global etiquetando a todos (Puedes citar fotos/videos y el bot los mandará).
-• \`.ver\` : *(Respondiendo a foto/video de 1 sola vez)* Descarga el archivo bloqueado y te lo reenvía de forma permanente.
+👢 *MODERACIÓN Y EXTRAS*
+• \`.kick [@user]\` : Expulsa a un usuario del grupo.
+• \`.n [mensaje]\` : Envía un Anuncio Global etiquetando a todos (puedes citar fotos/videos).
+• \`.ver\` : *(Respondiendo a foto/video de 1 vez)* Descarga el archivo y te lo reenvía permanentemente.
 
-🗣️ *COMANDOS PÚBLICOS (Para Clientes)*
+🗣️ *PARA TUS CLIENTES*
 • \`.pago\` : Muestra tus cuentas bancarias.
 • \`.tramites\` : Muestra lo que vendes.
 • \`.stock\` : Muestra tu inventario.
-• \`.versaldo\` : El cliente checa cuánto dinero le queda a su favor.
+• \`.versaldo\` : El cliente revisa cuánto saldo tiene a su favor.
+• \`.compras\` : El cliente revisa cuántos puntos le faltan para su regalo.
 
 │ 𝑁𝑎𝑒𝑣𝑖𝑠 𝐵𝑜𝑡
 │ Fecha: ${new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })} (MX)`;
-
+            
             const fakeQuote = { key: { fromMe: false, participant: '0@s.whatsapp.net', id: '1234567890123456' }, message: { locationMessage: { name: 'WhatsApp ✅', address: '🤖 MANUAL DEL SISTEMA' } } };
             await sock.sendMessage(chatId, { text: menu }, { quoted: fakeQuote });
             return;
         }
 
         // ==========================================
-        // INTERRUPTORES DE MODO AUTOMÁTICO
+        // INTERRUPTORES DE MODO AUTOMÁTICO Y LEALTAD
         // ==========================================
         if (textoMensaje.toLowerCase() === '/auto' && tienePermisoOperativo && esGrupo) {
             configSistema.autoMode[chatId] = true;
@@ -264,6 +276,53 @@ async function iniciarBot() {
             guardarConfig(configSistema);
             await responder('🤖 ❌ *Modo Automático DESACTIVADO*\nEl bot ya no procesará los trámites por ti. Deberás manejarlos y entregarlos manualmente con `/r`.');
             return;
+        }
+
+        if (textoMensaje.toLowerCase() === '/lealtad on' && tienePermisoOperativo && esGrupo) {
+            configSistema.loyaltyMode[chatId] = true;
+            guardarConfig(configSistema);
+            await responder('🌟 ✅ *Sistema de Lealtad ACTIVADO*\nA partir de ahora, los clientes recibirán $12.00 MXN de regalo cada 10 trámites completados.');
+            return;
+        }
+
+        if (textoMensaje.toLowerCase() === '/lealtad off' && tienePermisoOperativo && esGrupo) {
+            configSistema.loyaltyMode[chatId] = false;
+            guardarConfig(configSistema);
+            await responder('🌟 ❌ *Sistema de Lealtad DESACTIVADO*\nLos clientes ya no acumularán compras ni recibirán regalos automáticos en este grupo.');
+            return;
+        }
+
+        // ==========================================
+        // COMANDOS DE LEALTAD (.compras y /addcompras)
+        // ==========================================
+        if (textoMensaje.toLowerCase() === '.compras') {
+            if (esGrupo && !esGrupoAutorizado) return;
+            if (!configSistema.loyaltyMode || !configSistema.loyaltyMode[chatId]) {
+                await responder('ℹ️ El sistema de recompensas no está activo en este grupo.');
+                return;
+            }
+            const llevas = configSistema.comprasUsuarios?.[chatId]?.[senderViejo] || 0;
+            const faltan = 10 - llevas;
+            await responder(`🌟 *Tu Tarjeta de Lealtad*\nLlevas *${llevas}* trámite(s) completado(s).\n¡Te faltan *${faltan}* para ganar un acta gratis ($12.00 MXN)!`);
+            return;
+        }
+
+        if (textoMensaje.toLowerCase().startsWith('/addcompras') && tienePermisoOperativo && esGrupo) {
+            const args = textoMensaje.split(' ').filter(a => a.trim() !== "");
+            let targetUser = extraerIdCitado(); let cantidad = 0;
+            if (targetUser) cantidad = parseInt(args[1], 10) || 0;
+            else if (args.length === 3) { targetUser = (args[1].includes('@') ? args[1] : `${args[1]}@c.us`); cantidad = parseInt(args[2], 10) || 0; }
+
+            if (targetUser && !isNaN(cantidad)) {
+                if (!configSistema.comprasUsuarios) configSistema.comprasUsuarios = {};
+                if (!configSistema.comprasUsuarios[chatId]) configSistema.comprasUsuarios[chatId] = {};
+                if (!configSistema.comprasUsuarios[chatId][targetUser]) configSistema.comprasUsuarios[chatId][targetUser] = 0;
+                
+                configSistema.comprasUsuarios[chatId][targetUser] += cantidad;
+                guardarConfig(configSistema);
+                const toMention = toBaileys(targetUser);
+                await sock.sendMessage(chatId, { text: `✅ *Lealtad Actualizada*\nSe sumaron *${cantidad}* trámites a @${targetUser.split('@')[0]}.\n🌟 Total actual: *${configSistema.comprasUsuarios[chatId][targetUser]}*`, mentions: [toMention] });
+            } return;
         }
 
         if (textoMensaje.toLowerCase() === '.grupos' && tienePermisoOperativo) {
@@ -280,6 +339,8 @@ async function iniciarBot() {
             delete configSistema.precios[targetId]; delete configSistema.propietariosGrupos[targetId]; delete configSistema.notificadoresGrupos[targetId]; delete configSistema.stockGrupos[targetId]; delete configSistema.pagosGrupos[targetId]; delete configSistema.tramitesGrupos[targetId];
             if (configSistema.gruposProveedores) delete configSistema.gruposProveedores[targetId];
             if (configSistema.autoMode) delete configSistema.autoMode[targetId];
+            if (configSistema.comprasUsuarios) delete configSistema.comprasUsuarios[targetId];
+            if (configSistema.loyaltyMode) delete configSistema.loyaltyMode[targetId];
             if (targetAlias) delete configSistema.gruposDestino[targetAlias];
             guardarConfig(configSistema);
             if (saldosUsuarios[targetId]) { delete saldosUsuarios[targetId]; guardarSaldos(saldosUsuarios); }
@@ -602,6 +663,7 @@ async function iniciarBot() {
                 for (const [alias, id] of Object.entries(configSistema.gruposDestino || {})) { if (id === chatId) { aliasDelGrupo = alias; break; } }
 
                 let textoConfirmacion = ""; let exitosos = []; let rechazados = [];
+                let mensajesLealtad = ""; 
 
                 for (const tramite of tramitesAProcesar) {
                     if (saldoDisponible >= tramite.costo) {
@@ -624,6 +686,22 @@ async function iniciarBot() {
                             }
                         }
 
+                        // SISTEMA DE LEALTAD
+                        if (configSistema.loyaltyMode && configSistema.loyaltyMode[chatId]) {
+                            if (!configSistema.comprasUsuarios) configSistema.comprasUsuarios = {};
+                            if (!configSistema.comprasUsuarios[chatId]) configSistema.comprasUsuarios[chatId] = {};
+                            if (!configSistema.comprasUsuarios[chatId][senderViejo]) configSistema.comprasUsuarios[chatId][senderViejo] = 0;
+                            
+                            configSistema.comprasUsuarios[chatId][senderViejo] += 1;
+                            
+                            if (configSistema.comprasUsuarios[chatId][senderViejo] >= 10) {
+                                saldoDisponible += 12; 
+                                configSistema.comprasUsuarios[chatId][senderViejo] = 0; 
+                                mensajesLealtad += `\n🎁 *¡CLIENTE ESTRELLA!* Acabas de completar 10 trámites. ¡Te hemos regalado *$12.00* de saldo!\n`;
+                            }
+                            guardarConfig(configSistema);
+                        }
+
                     } else rechazados.push(tramite);
                 }
 
@@ -631,6 +709,7 @@ async function iniciarBot() {
                 if (rechazados.length > 0) { textoConfirmacion += `\n❌ *Rechazados (Sin Saldo):*\n`; for (const rch of rechazados) textoConfirmacion += `⚠️ [${rch.identificador} (${rch.codigo})]\n`; }
 
                 saldosUsuarios[chatId][senderViejo] = saldoDisponible; guardarSaldos(saldosUsuarios);
+                textoConfirmacion += mensajesLealtad; 
                 textoConfirmacion += `\n🔋 *Saldo disponible:* $${saldoDisponible}.00 MXN\nProcesando solicitud... ⌛`;
                 await responder(textoConfirmacion);
             }
