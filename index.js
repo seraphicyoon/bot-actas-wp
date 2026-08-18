@@ -27,10 +27,12 @@ function cargarConfig() {
             c.gruposDestino = c.gruposDestino || {}; c.precios = c.precios || {}; c.propietariosGrupos = c.propietariosGrupos || {};
             c.notificadoresGrupos = c.notificadoresGrupos || {}; c.stockGrupos = c.stockGrupos || {}; c.pagosGrupos = c.pagosGrupos || {}; c.tramitesGrupos = c.tramitesGrupos || {};
             c.gruposProveedores = c.gruposProveedores || {}; 
+            c.pendientes = c.pendientes || {}; // Memoria de trámites
+            c.autoMode = c.autoMode || {}; // Interruptor de piloto automático
             return c;
         }
     } catch (e) {}
-    const init = { gruposAutorizados: [], vendedores: [], superAdmins: [], gruposDestino: {}, precios: {}, propietariosGrupos: {}, notificadoresGrupos: {}, stockGrupos: {}, pagosGrupos: {}, tramitesGrupos: {}, gruposProveedores: {} };
+    const init = { gruposAutorizados: [], vendedores: [], superAdmins: [], gruposDestino: {}, precios: {}, propietariosGrupos: {}, notificadoresGrupos: {}, stockGrupos: {}, pagosGrupos: {}, tramitesGrupos: {}, gruposProveedores: {}, pendientes: {}, autoMode: {} };
     fs.writeFileSync(PATH_CONFIG, JSON.stringify(init, null, 4), 'utf8'); return init;
 }
 function guardarConfig(config) { try { fs.writeFileSync(PATH_CONFIG, JSON.stringify(config, null, 4), 'utf8'); } catch (e) {} }
@@ -93,7 +95,6 @@ async function iniciarBot() {
 
         let textoMensaje = msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || msg.message.documentMessage?.caption || "";
         textoMensaje = textoMensaje.trim();
-        if (!textoMensaje) return;
 
         const responder = async (texto) => { await sock.sendMessage(chatId, { text: texto }, { quoted: msg }); };
 
@@ -104,6 +105,74 @@ async function iniciarBot() {
 
         let configSistema = cargarConfig();
         let saldosUsuarios = cargarSaldos();
+
+        // ==========================================
+        // AUTO-ENTREGA DE PDFS Y AUTO-REEMBOLSOS
+        // ==========================================
+        
+        // 1. Detección de PDF (Si se encontró el acta)
+        const docMsg = msg.message.documentMessage;
+        if (docMsg && docMsg.fileName) {
+            const fileNameUpper = docMsg.fileName.toUpperCase();
+            if (configSistema.pendientes) {
+                for (const [idTramite, datos] of Object.entries(configSistema.pendientes)) {
+                    if (fileNameUpper.includes(idTramite.toUpperCase())) {
+                        const grupoVentas = datos.grupoVentas;
+                        const cliente = datos.cliente;
+
+                        // Entregamos solo si el Auto Mode está activo
+                        if (configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
+                            const msgToForward = { key: msg.key, message: msg.message };
+                            try {
+                                await sock.sendMessage(grupoVentas, { forward: msgToForward });
+                                await sock.sendMessage(grupoVentas, { text: `✅ ¡Tu trámite está listo! @${cliente.split('@')[0]}`, mentions: [toBaileys(cliente)] });
+                                delete configSistema.pendientes[idTramite];
+                                guardarConfig(configSistema);
+                            } catch (e) { console.log('Error auto-reenviando:', e); }
+                        }
+                        break; 
+                    }
+                }
+            }
+        }
+
+        // 2. Detección de Error (Si NO se encontró en sistema)
+        if (textoMensaje) {
+            const msgTextoLower = textoMensaje.toLowerCase();
+            const esMensajeDeError = msgTextoLower.includes('no se encontró') || msgTextoLower.includes('no se encontro') || msgTextoLower.includes('no esta en sistema') || msgTextoLower.includes('no se encuentra');
+            
+            if (esMensajeDeError && configSistema.pendientes) {
+                for (const [idTramite, datos] of Object.entries(configSistema.pendientes)) {
+                    // Si el proveedor escribió la CURP en el mensaje de error
+                    if (textoMensaje.toUpperCase().includes(idTramite.toUpperCase())) {
+                        const grupoVentas = datos.grupoVentas;
+                        const cliente = datos.cliente;
+                        const costo = datos.costo;
+
+                        if (configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
+                            try {
+                                // 2.1 Reembolsamos el dinero
+                                if (!saldosUsuarios[grupoVentas]) saldosUsuarios[grupoVentas] = {};
+                                if (!saldosUsuarios[grupoVentas][cliente]) saldosUsuarios[grupoVentas][cliente] = 0;
+                                saldosUsuarios[grupoVentas][cliente] += costo;
+                                guardarSaldos(saldosUsuarios);
+
+                                // 2.2 Avisamos al cliente
+                                const avisoReembolso = `⚠️ *TRÁMITE NO ENCONTRADO*\n@${cliente.split('@')[0]}, el proveedor indica que el trámite con identificador *${idTramite}* no se encontró en sistema.\n\n💰 Se ha devuelto automáticamente *$${costo}.00* a tu saldo.\n🔋 Saldo actual: $${saldosUsuarios[grupoVentas][cliente]}.00`;
+                                await sock.sendMessage(grupoVentas, { text: avisoReembolso, mentions: [toBaileys(cliente)] });
+
+                                // 2.3 Borramos de pendientes
+                                delete configSistema.pendientes[idTramite];
+                                guardarConfig(configSistema);
+                            } catch (e) { console.log('Error en auto-reembolso:', e); }
+                        }
+                        break; 
+                    }
+                }
+            }
+        }
+
+        if (!textoMensaje) return;
 
         let esAdminDelGrupo = false;
         let participantesGrupo = [];
@@ -126,9 +195,26 @@ async function iniciarBot() {
         // ==========================================
 
         if (textoMensaje.toLowerCase() === '.jinni' && tienePermisoOperativo) {
-            const menu = `🌸 *LISTA MAESTRA DE COMANDOS* 🌸\n\n👑 *Súper Admins:*\n• /mantenimiento, /prendido\n• /addvendedor, /delvendedor\n\n⚙️ *Gestión:*\n• /activargrupo, /setgrupo\n• /setproveedor [Alias]\n• .abrir / .cerrar\n\n🧹 *Memoria:*\n• .grupos, .eliminar [alias o ID]\n\n💰 *Operaciones:*\n• /precio, /saldo, .saldos\n• /r, .setpago, /setstock, /settramites\n\n👢 *Moderación:*\n• .kick, .n, .ver\n\n🗣️ *Públicos (Clientes):*\n• .pago, .tramites, .stock, .versaldo\n\n\n│ 𝑁𝑎𝑒𝑣𝑖𝑠 𝐵𝑜𝑡\n│ ${new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })} (MX)`;
+            const menu = `🌸 *LISTA MAESTRA DE COMANDOS* 🌸\n\n👑 *Súper Admins:*\n• /mantenimiento, /prendido\n• /addvendedor, /delvendedor\n\n⚙️ *Gestión:*\n• /activargrupo, /setgrupo\n• /setproveedor, /auto, /offauto\n• .abrir / .cerrar\n\n🧹 *Memoria:*\n• .grupos, .eliminar [alias o ID]\n\n💰 *Operaciones:*\n• /precio, /saldo, .saldos\n• /r, .setpago, /setstock, /settramites\n\n👢 *Moderación:*\n• .kick, .n, .ver\n\n🗣️ *Públicos (Clientes):*\n• .pago, .tramites, .stock, .versaldo\n\n\n│ 𝑁𝑎𝑒𝑣𝑖𝑠 𝐵𝑜𝑡\n│ ${new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })} (MX)`;
             const fakeQuote = { key: { fromMe: false, participant: '0@s.whatsapp.net', id: '1234567890123456' }, message: { locationMessage: { name: 'WhatsApp ✅', address: '🤖 MENÚ DEL SISTEMA' } } };
             await sock.sendMessage(chatId, { text: menu }, { quoted: fakeQuote });
+            return;
+        }
+
+        // ==========================================
+        // INTERRUPTORES DE MODO AUTOMÁTICO
+        // ==========================================
+        if (textoMensaje.toLowerCase() === '/auto' && tienePermisoOperativo && esGrupo) {
+            configSistema.autoMode[chatId] = true;
+            guardarConfig(configSistema);
+            await responder('🤖 ✅ *Modo Automático ACTIVADO*\nLos trámites de actas se enviarán solos al proveedor, se entregarán automáticamente, y se reembolsarán si no se encuentran.');
+            return;
+        }
+
+        if (textoMensaje.toLowerCase() === '/offauto' && tienePermisoOperativo && esGrupo) {
+            configSistema.autoMode[chatId] = false;
+            guardarConfig(configSistema);
+            await responder('🤖 ❌ *Modo Automático DESACTIVADO*\nEl bot ya no procesará los trámites por ti. Deberás manejarlos y entregarlos manualmente con `/r`.');
             return;
         }
 
@@ -145,6 +231,7 @@ async function iniciarBot() {
             configSistema.gruposAutorizados = configSistema.gruposAutorizados.filter(id => id !== targetId);
             delete configSistema.precios[targetId]; delete configSistema.propietariosGrupos[targetId]; delete configSistema.notificadoresGrupos[targetId]; delete configSistema.stockGrupos[targetId]; delete configSistema.pagosGrupos[targetId]; delete configSistema.tramitesGrupos[targetId];
             if (configSistema.gruposProveedores) delete configSistema.gruposProveedores[targetId];
+            if (configSistema.autoMode) delete configSistema.autoMode[targetId];
             if (targetAlias) delete configSistema.gruposDestino[targetAlias];
             guardarConfig(configSistema);
             if (saldosUsuarios[targetId]) { delete saldosUsuarios[targetId]; guardarSaldos(saldosUsuarios); }
@@ -348,7 +435,6 @@ async function iniciarBot() {
             const args = textoMensaje.split(' ').filter(a => a.trim() !== ""); if (args.length < 3) return;
             let tipoServicio = args[1].toLowerCase(); const nuevoPrecio = parseInt(args[2], 10); if (isNaN(nuevoPrecio) || nuevoPrecio < 1) return;
             
-            // CAMBIO APLICADO: Inicia los precios del grupo copiándolos correctamente de PRECIOS_BASE
             if (!configSistema.precios[chatId]) configSistema.precios[chatId] = { ...PRECIOS_BASE };
             
             if (tipoServicio === 'acta') {
@@ -478,10 +564,18 @@ async function iniciarBot() {
                         if (configSistema.notificadoresGrupos[chatId]) configSistema.notificadoresGrupos[chatId].forEach(id => destinatarios.add(id));
                         for (const destId of destinatarios) { try { await sock.sendMessage(toBaileys(destId), { text: alerta }); } catch (err) {} }
 
-                        // ENVÍO AUTOMÁTICO AL PROVEEDOR (SOLO ACTAS)
-                        if (configSistema.gruposProveedores && configSistema.gruposProveedores[chatId] && tramite.nombreServicio.startsWith('Acta')) {
-                            try { await sock.sendMessage(configSistema.gruposProveedores[chatId], { text: tramite.lineaOriginal }); } catch (err) {}
+                        // ENVÍO AUTOMÁTICO Y GUARDADO EN PENDIENTES (SOLO SI EL /AUTO ESTÁ ACTIVO)
+                        if (configSistema.autoMode && configSistema.autoMode[chatId]) {
+                            if (configSistema.gruposProveedores && configSistema.gruposProveedores[chatId] && tramite.nombreServicio.startsWith('Acta')) {
+                                try { 
+                                    await sock.sendMessage(configSistema.gruposProveedores[chatId], { text: tramite.lineaOriginal }); 
+                                    // GUARDAMOS EL COSTO PARA PODER REEMBOLSARLO SI FALLA
+                                    configSistema.pendientes[tramite.identificador] = { grupoVentas: chatId, cliente: senderViejo, costo: tramite.costo };
+                                    guardarConfig(configSistema);
+                                } catch (err) {}
+                            }
                         }
+
                     } else rechazados.push(tramite);
                 }
 
