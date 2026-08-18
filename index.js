@@ -157,8 +157,8 @@ async function iniciarBot() {
                                 saldosUsuarios[grupoVentas][cliente] += costo;
                                 guardarSaldos(saldosUsuarios);
 
-                                // 2.2 Avisamos al cliente
-                                const avisoReembolso = `⚠️ *TRÁMITE NO ENCONTRADO*\n@${cliente.split('@')[0]}, el proveedor indica que el trámite con identificador *${idTramite}* no se encontró en sistema.\n\n💰 Se ha devuelto automáticamente *$${costo}.00* a tu saldo.\n🔋 Saldo actual: $${saldosUsuarios[grupoVentas][cliente]}.00`;
+                                // 2.2 Avisamos al cliente (Cambiado a modo incógnito)
+                                const avisoReembolso = `⚠️ *TRÁMITE NO ENCONTRADO*\n@${cliente.split('@')[0]}, el sistema nos indica que el trámite con identificador *${idTramite}* no se encontró.\n\n💰 Se ha devuelto automáticamente *$${costo}.00* a tu saldo.\n🔋 Saldo actual: $${saldosUsuarios[grupoVentas][cliente]}.00`;
                                 await sock.sendMessage(grupoVentas, { text: avisoReembolso, mentions: [toBaileys(cliente)] });
 
                                 // 2.3 Borramos de pendientes
@@ -207,7 +207,7 @@ async function iniciarBot() {
         if (textoMensaje.toLowerCase() === '/auto' && tienePermisoOperativo && esGrupo) {
             configSistema.autoMode[chatId] = true;
             guardarConfig(configSistema);
-            await responder('🤖 ✅ *Modo Automático ACTIVADO*\nLos trámites de actas se enviarán solos al proveedor, se entregarán automáticamente, y se reembolsarán si no se encuentran.');
+            await responder('🤖 ✅ *Modo Automático ACTIVADO*\nEl sistema procesará, entregará y reembolsará las actas de forma 100% automática.');
             return;
         }
 
