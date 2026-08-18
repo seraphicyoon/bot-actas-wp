@@ -195,8 +195,56 @@ async function iniciarBot() {
         // ==========================================
 
         if (textoMensaje.toLowerCase() === '.jinni' && tienePermisoOperativo) {
-            const menu = `🌸 *LISTA MAESTRA DE COMANDOS* 🌸\n\n👑 *Súper Admins:*\n• /mantenimiento, /prendido\n• /addvendedor, /delvendedor\n\n⚙️ *Gestión:*\n• /activargrupo, /setgrupo\n• /setproveedor, /auto, /offauto\n• .abrir / .cerrar\n\n🧹 *Memoria:*\n• .grupos, .eliminar [alias o ID]\n\n💰 *Operaciones:*\n• /precio, /saldo, .saldos\n• /r, .setpago, /setstock, /settramites\n\n👢 *Moderación:*\n• .kick, .n, .ver\n\n🗣️ *Públicos (Clientes):*\n• .pago, .tramites, .stock, .versaldo\n\n\n│ 𝑁𝑎𝑒𝑣𝑖𝑠 𝐵𝑜𝑡\n│ ${new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })} (MX)`;
-            const fakeQuote = { key: { fromMe: false, participant: '0@s.whatsapp.net', id: '1234567890123456' }, message: { locationMessage: { name: 'WhatsApp ✅', address: '🤖 MENÚ DEL SISTEMA' } } };
+            const menu = `🌸 *GUÍA MAESTRA DE NAEVIS BOT* 🌸
+¡Hola! Aquí tienes la explicación de todos los comandos disponibles:
+
+👑 *SÚPER ADMINS (Tú)*
+• \`/mantenimiento\` ó \`/apagado\` : Apaga el bot (Avisa a todos los grupos).
+• \`/prendido\` : Enciende el bot (Avisa a todos los grupos).
+• \`/addvendedor [@user]\` : Etiqueta a alguien para darle permisos de administrador del bot.
+• \`/delvendedor [@user]\` : Etiqueta a alguien para quitarle los permisos.
+
+⚙️ *GESTIÓN DE GRUPOS*
+• \`/activargrupo\` : Enciende el bot en el grupo donde lo escribas.
+• \`/setgrupo [alias]\` : Le pone un nombre corto a tu grupo de ventas (Ej: /setgrupo actas1).
+• \`/setproveedor [alias]\` : *(Escríbelo en el grupo del proveedor)* Conecta al proveedor con tu grupo de ventas.
+• \`.abrir\` / \`.cerrar\` : Abre o cierra el chat del grupo para los clientes.
+• \`/addnotis\` / \`/delnotis\` / \`/vernotis\` : Para configurar si quieres recibir alertas en privado de cada venta.
+
+🤖 *PILOTO AUTOMÁTICO*
+• \`/auto\` : Activa la inteligencia del bot (envía los pedidos al proveedor, detecta los PDFs, los entrega al cliente y hace reembolsos si no hay acta).
+• \`/offauto\` : Desactiva la inteligencia (para que tú entregues los trámites a mano).
+
+🧹 *MEMORIA Y SISTEMA*
+• \`.grupos\` : Muestra la lista de todos tus grupos activos y sus Alias.
+• \`.eliminar [alias ó ID]\` : Borra por completo un grupo de la memoria del bot.
+
+💰 *FINANZAS Y VENTAS*
+• \`/precio [acta ó nombre] [$$]\` : Cambia el costo de un servicio. (Ej: /precio acta 18).
+• \`/saldo [@user] [$$]\` : Súmale dinero al cliente. (Ej: /saldo @cliente 100).
+• \`.saldos\` ó \`/saldos\` : Te muestra la lista de todos los clientes que tienen dinero guardado.
+• \`/r [alias] [@user]\` : *(Respondiendo al PDF)* Reenvía el acta manualmente a tu cliente y le avisa.
+
+📋 *CONFIGURAR TEXTOS PÚBLICOS*
+• \`.setpago [texto]\` : Escribe aquí los datos de tus tarjetas/cuentas bancarias.
+• \`/settramites [texto]\` : Escribe tu lista de servicios disponibles.
+• \`/setstock [texto]\` : Escribe si tienes perfiles o cuentas disponibles.
+
+👢 *MODERACIÓN*
+• \`.kick [@user]\` : Expulsa a un cliente castigado del grupo.
+• \`.n [mensaje]\` : Envía un Anuncio Global etiquetando a todos (Puedes citar fotos/videos y el bot los mandará).
+• \`.ver\` : *(Respondiendo a foto/video de 1 sola vez)* Descarga el archivo bloqueado y te lo reenvía de forma permanente.
+
+🗣️ *COMANDOS PÚBLICOS (Para Clientes)*
+• \`.pago\` : Muestra tus cuentas bancarias.
+• \`.tramites\` : Muestra lo que vendes.
+• \`.stock\` : Muestra tu inventario.
+• \`.versaldo\` : El cliente checa cuánto dinero le queda a su favor.
+
+│ 𝑁𝑎𝑒𝑣𝑖𝑠 𝐵𝑜𝑡
+│ Fecha: ${new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })} (MX)`;
+
+            const fakeQuote = { key: { fromMe: false, participant: '0@s.whatsapp.net', id: '1234567890123456' }, message: { locationMessage: { name: 'WhatsApp ✅', address: '🤖 MANUAL DEL SISTEMA' } } };
             await sock.sendMessage(chatId, { text: menu }, { quoted: fakeQuote });
             return;
         }
