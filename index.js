@@ -31,10 +31,12 @@ function cargarConfig() {
             c.autoMode = c.autoMode || {}; 
             c.comprasUsuarios = c.comprasUsuarios || {}; // Memoria de Lealtad
             c.loyaltyMode = c.loyaltyMode || {}; // Interruptor de Lealtad
+            c.vips = c.vips || {}; // NUEVO: Autorizados para pedir a crédito
+            c.deudas = c.deudas || {}; // NUEVO: Registro de dinero que deben
             return c;
         }
     } catch (e) {}
-    const init = { gruposAutorizados: [], vendedores: [], superAdmins: [], gruposDestino: {}, precios: {}, propietariosGrupos: {}, notificadoresGrupos: {}, stockGrupos: {}, pagosGrupos: {}, tramitesGrupos: {}, gruposProveedores: {}, pendientes: {}, autoMode: {}, comprasUsuarios: {}, loyaltyMode: {} };
+    const init = { gruposAutorizados: [], vendedores: [], superAdmins: [], gruposDestino: {}, precios: {}, propietariosGrupos: {}, notificadoresGrupos: {}, stockGrupos: {}, pagosGrupos: {}, tramitesGrupos: {}, gruposProveedores: {}, pendientes: {}, autoMode: {}, comprasUsuarios: {}, loyaltyMode: {}, vips: {}, deudas: {} };
     fs.writeFileSync(PATH_CONFIG, JSON.stringify(init, null, 4), 'utf8'); return init;
 }
 function guardarConfig(config) { try { fs.writeFileSync(PATH_CONFIG, JSON.stringify(config, null, 4), 'utf8'); } catch (e) {} }
@@ -122,6 +124,7 @@ async function iniciarBot() {
                         const grupoVentas = datos.grupoVentas;
                         const cliente = datos.cliente;
 
+                        // Entregamos solo si el Auto Mode está activo
                         if (configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
                             const msgToForward = { key: msg.key, message: msg.message };
                             try {
@@ -144,6 +147,7 @@ async function iniciarBot() {
             
             if (esMensajeDeError && configSistema.pendientes) {
                 for (const [idTramite, datos] of Object.entries(configSistema.pendientes)) {
+                    // Si el proveedor escribió la CURP en el mensaje de error
                     if (textoMensaje.toUpperCase().includes(idTramite.toUpperCase())) {
                         const grupoVentas = datos.grupoVentas;
                         const cliente = datos.cliente;
@@ -151,11 +155,20 @@ async function iniciarBot() {
 
                         if (configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
                             try {
-                                // 2.1 Reembolsamos el dinero
-                                if (!saldosUsuarios[grupoVentas]) saldosUsuarios[grupoVentas] = {};
-                                if (!saldosUsuarios[grupoVentas][cliente]) saldosUsuarios[grupoVentas][cliente] = 0;
-                                saldosUsuarios[grupoVentas][cliente] += costo;
-                                guardarSaldos(saldosUsuarios);
+                                // 2.1 Revisamos si fue pagado con deuda VIP (Crédito)
+                                let fuePorDeuda = false;
+                                if (configSistema.deudas && configSistema.deudas[grupoVentas] && configSistema.deudas[grupoVentas][cliente] >= costo) {
+                                    // Le restamos la deuda en lugar de darle saldo
+                                    configSistema.deudas[grupoVentas][cliente] -= costo;
+                                    guardarConfig(configSistema);
+                                    fuePorDeuda = true;
+                                } else {
+                                    // Reembolsamos el dinero a saldo normal
+                                    if (!saldosUsuarios[grupoVentas]) saldosUsuarios[grupoVentas] = {};
+                                    if (!saldosUsuarios[grupoVentas][cliente]) saldosUsuarios[grupoVentas][cliente] = 0;
+                                    saldosUsuarios[grupoVentas][cliente] += costo;
+                                    guardarSaldos(saldosUsuarios);
+                                }
 
                                 // 2.1.5 Si la Lealtad está activa, restamos el punto porque la venta no se completó
                                 if (configSistema.loyaltyMode && configSistema.loyaltyMode[grupoVentas]) {
@@ -164,8 +177,12 @@ async function iniciarBot() {
                                     }
                                 }
 
-                                // 2.2 Avisamos al cliente (Modo incógnito)
-                                const avisoReembolso = `⚠️ *TRÁMITE NO ENCONTRADO*\n@${cliente.split('@')[0]}, el sistema nos indica que el trámite con identificador *${idTramite}* no se encontró.\n\n💰 Se ha devuelto automáticamente *$${costo}.00* a tu saldo.\n🔋 Saldo actual: $${saldosUsuarios[grupoVentas][cliente]}.00`;
+                                // 2.2 Avisamos al cliente
+                                let estadoFinanciero = fuePorDeuda 
+                                    ? `💸 Se ha perdonado/restado *$${costo}.00* de tu deuda acumulada.\n⚠️ Deuda actual: $${configSistema.deudas[grupoVentas][cliente]}.00`
+                                    : `💰 Se ha devuelto automáticamente *$${costo}.00* a tu saldo.\n🔋 Saldo actual: $${saldosUsuarios[grupoVentas][cliente]}.00`;
+
+                                const avisoReembolso = `⚠️ *TRÁMITE NO ENCONTRADO*\n@${cliente.split('@')[0]}, el sistema nos indica que el trámite con identificador *${idTramite}* no se encontró.\n\n${estadoFinanciero}`;
                                 await sock.sendMessage(grupoVentas, { text: avisoReembolso, mentions: [toBaileys(cliente)] });
 
                                 // 2.3 Borramos de pendientes
@@ -224,7 +241,11 @@ async function iniciarBot() {
 • \`/offauto\` : Apaga el piloto automático.
 • \`/lealtad on\` : Activa el regalo de $12 de saldo cada 10 compras para premiar a clientes.
 • \`/lealtad off\` : Apaga el sistema de recompensas.
-• \`/addcompras [@user] [cantidad]\` : Suma puntos manualmente a la tarjeta de un cliente.
+
+💳 *CLIENTES VIP (CRÉDITO)*
+• \`/vip [@user]\` : Da permiso a un cliente de pedir actas sin saldo (se le acumula como deuda).
+• \`/liquidado [@user]\` : Pone la deuda del cliente VIP en ceros.
+• \`.deudores\` : Muestra la lista de todos los VIP que deben dinero.
 
 🧹 *MEMORIA Y SISTEMA*
 • \`.grupos\` : Muestra la lista de todos tus grupos activos y sus Alias.
@@ -252,12 +273,82 @@ async function iniciarBot() {
 • \`.stock\` : Muestra tu inventario.
 • \`.versaldo\` : El cliente revisa cuánto saldo tiene a su favor.
 • \`.compras\` : El cliente revisa cuántos puntos le faltan para su regalo.
+• \`.deuda\` : El cliente VIP revisa cuánto dinero debe.
 
 │ 𝑁𝑎𝑒𝑣𝑖𝑠 𝐵𝑜𝑡
 │ Fecha: ${new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })} (MX)`;
             
             const fakeQuote = { key: { fromMe: false, participant: '0@s.whatsapp.net', id: '1234567890123456' }, message: { locationMessage: { name: 'WhatsApp ✅', address: '🤖 MANUAL DEL SISTEMA' } } };
             await sock.sendMessage(chatId, { text: menu }, { quoted: fakeQuote });
+            return;
+        }
+
+        // ==========================================
+        // SISTEMA VIP (CRÉDITO)
+        // ==========================================
+        if (textoMensaje.toLowerCase().startsWith('/vip') && tienePermisoOperativo && esGrupo) {
+            let targetUser = extraerIdCitado();
+            if (!targetUser) { const args = textoMensaje.split(' '); if (args[1]) targetUser = args[1].includes('@') ? args[1] : `${args[1]}@c.us`; }
+            if (!targetUser) return await responder('⚠️ Etiqueta o cita al usuario que será VIP.');
+
+            if (!configSistema.vips) configSistema.vips = {};
+            if (!configSistema.vips[chatId]) configSistema.vips[chatId] = [];
+
+            const indice = configSistema.vips[chatId].indexOf(targetUser);
+            if (indice > -1) {
+                configSistema.vips[chatId].splice(indice, 1);
+                guardarConfig(configSistema);
+                await sock.sendMessage(chatId, { text: `❌ @${targetUser.split('@')[0]} ya no es VIP. Deberá pagar por adelantado.`, mentions: [toBaileys(targetUser)] });
+            } else {
+                configSistema.vips[chatId].push(targetUser);
+                guardarConfig(configSistema);
+                await sock.sendMessage(chatId, { text: `✅ @${targetUser.split('@')[0]} ahora es VIP.\nPuede solicitar trámites sin saldo y se le acumularán como deuda.`, mentions: [toBaileys(targetUser)] });
+            }
+            return;
+        }
+
+        if (textoMensaje.toLowerCase().startsWith('/liquidado') && tienePermisoOperativo && esGrupo) {
+            let targetUser = extraerIdCitado();
+            if (!targetUser) { const args = textoMensaje.split(' '); if (args[1]) targetUser = args[1].includes('@') ? args[1] : `${args[1]}@c.us`; }
+            if (!targetUser) return await responder('⚠️ Etiqueta o cita al usuario para liquidar su deuda.');
+
+            if (!configSistema.deudas) configSistema.deudas = {};
+            if (!configSistema.deudas[chatId]) configSistema.deudas[chatId] = {};
+            
+            const deudaActual = configSistema.deudas[chatId][targetUser] || 0;
+            configSistema.deudas[chatId][targetUser] = 0;
+            guardarConfig(configSistema);
+            
+            await sock.sendMessage(chatId, { text: `✅ *DEUDA LIQUIDADA*\nSe han perdonado *$${deudaActual}.00 MXN* a @${targetUser.split('@')[0]}.\n💸 Deuda actual: $0.00`, mentions: [toBaileys(targetUser)] });
+            return;
+        }
+
+        if (textoMensaje.toLowerCase() === '.deudores' && tienePermisoOperativo && esGrupo) {
+            let deudasDelGrupo = configSistema.deudas?.[chatId];
+            if (!deudasDelGrupo || Object.keys(deudasDelGrupo).length === 0) return await responder('✅ ¡Felicidades! Nadie te debe dinero en este grupo.');
+
+            let listaDeudores = `💸 *LISTA DE DEUDORES VIP* 💸\n\n`; let hayDeudas = false;
+            for (const [usuario, deuda] of Object.entries(deudasDelGrupo)) {
+                if (deuda > 0) {
+                    const numeroPuro = usuario.split('@')[0];
+                    listaDeudores += `👤 @${numeroPuro}:\n💰 Debe: *$${deuda}.00 MXN*\n\n`; 
+                    hayDeudas = true; 
+                }
+            }
+            if (!hayDeudas) return await responder('✅ ¡Felicidades! Nadie te debe dinero en este grupo.');
+            
+            const fakeQuote = { key: { fromMe: false, participant: '0@s.whatsapp.net', id: '1234567890123456' }, message: { locationMessage: { name: 'WhatsApp ✅', address: '📋 REPORTE DE DEUDAS' } } };
+            await sock.sendMessage(chatId, { text: listaDeudores }, { quoted: fakeQuote }); return;
+        }
+
+        if (textoMensaje.toLowerCase() === '.deuda') {
+            if (esGrupo && !esGrupoAutorizado) return;
+            const miDeuda = configSistema.deudas?.[chatId]?.[senderViejo] || 0;
+            if (miDeuda > 0) {
+                await responder(`💸 *Tu Deuda VIP Actual:* $${miDeuda}.00 MXN\n⚠️ Recuerda liquidar tu deuda con la administración.`);
+            } else {
+                await responder(`✅ No tienes ninguna deuda pendiente. ¡Estás al corriente!`);
+            }
             return;
         }
 
@@ -341,6 +432,8 @@ async function iniciarBot() {
             if (configSistema.autoMode) delete configSistema.autoMode[targetId];
             if (configSistema.comprasUsuarios) delete configSistema.comprasUsuarios[targetId];
             if (configSistema.loyaltyMode) delete configSistema.loyaltyMode[targetId];
+            if (configSistema.vips) delete configSistema.vips[targetId];
+            if (configSistema.deudas) delete configSistema.deudas[targetId];
             if (targetAlias) delete configSistema.gruposDestino[targetAlias];
             guardarConfig(configSistema);
             if (saldosUsuarios[targetId]) { delete saldosUsuarios[targetId]; guardarSaldos(saldosUsuarios); }
@@ -657,7 +750,18 @@ async function iniciarBot() {
 
             if (tramitesAProcesar.length > 0) {
                 let saldoDisponible = saldosUsuarios[chatId]?.[senderViejo] || 0;
-                if (saldoDisponible <= 0) return await responder(`⚠️ *AVISO* ⚠️\nNo cuentas con saldo suficiente.`);
+                
+                // Revisar si es VIP y su deuda actual
+                let esVip = false;
+                if (configSistema.vips && configSistema.vips[chatId] && configSistema.vips[chatId].includes(senderViejo)) {
+                    esVip = true;
+                }
+                let miDeuda = 0;
+                if (configSistema.deudas && configSistema.deudas[chatId] && configSistema.deudas[chatId][senderViejo]) {
+                    miDeuda = configSistema.deudas[chatId][senderViejo];
+                }
+
+                if (saldoDisponible <= 0 && !esVip) return await responder(`⚠️ *AVISO* ⚠️\nNo cuentas con saldo suficiente.`);
 
                 let aliasDelGrupo = "SIN ALIAS";
                 for (const [alias, id] of Object.entries(configSistema.gruposDestino || {})) { if (id === chatId) { aliasDelGrupo = alias; break; } }
@@ -667,6 +771,7 @@ async function iniciarBot() {
 
                 for (const tramite of tramitesAProcesar) {
                     if (saldoDisponible >= tramite.costo) {
+                        // Tiene saldo normal
                         saldoDisponible -= tramite.costo; exitosos.push(tramite);
                         const alerta = `🔔 *TRÁMITE SOLICITADO*\n👤 *ID:* \`${senderViejo}\`\n🏷️ *Grupo:* \`${aliasDelGrupo}\`\n🔑 *Trámite:* ${tramite.identificador} ${tramite.nombreServicio.toUpperCase()}\n🔋 *Saldo restante:* $${saldoDisponible}.00`;
                         
@@ -674,19 +779,17 @@ async function iniciarBot() {
                         if (configSistema.notificadoresGrupos[chatId]) configSistema.notificadoresGrupos[chatId].forEach(id => destinatarios.add(id));
                         for (const destId of destinatarios) { try { await sock.sendMessage(toBaileys(destId), { text: alerta }); } catch (err) {} }
 
-                        // ENVÍO AUTOMÁTICO Y GUARDADO EN PENDIENTES (SOLO SI EL /AUTO ESTÁ ACTIVO)
                         if (configSistema.autoMode && configSistema.autoMode[chatId]) {
                             if (configSistema.gruposProveedores && configSistema.gruposProveedores[chatId] && tramite.nombreServicio.startsWith('Acta')) {
                                 try { 
                                     await sock.sendMessage(configSistema.gruposProveedores[chatId], { text: tramite.lineaOriginal }); 
-                                    // GUARDAMOS EL COSTO PARA PODER REEMBOLSARLO SI FALLA
                                     configSistema.pendientes[tramite.identificador] = { grupoVentas: chatId, cliente: senderViejo, costo: tramite.costo };
                                     guardarConfig(configSistema);
                                 } catch (err) {}
                             }
                         }
 
-                        // SISTEMA DE LEALTAD
+                        // SISTEMA DE LEALTAD (SALDO NORMAL)
                         if (configSistema.loyaltyMode && configSistema.loyaltyMode[chatId]) {
                             if (!configSistema.comprasUsuarios) configSistema.comprasUsuarios = {};
                             if (!configSistema.comprasUsuarios[chatId]) configSistema.comprasUsuarios[chatId] = {};
@@ -702,15 +805,84 @@ async function iniciarBot() {
                             guardarConfig(configSistema);
                         }
 
-                    } else rechazados.push(tramite);
+                    } else if (esVip) {
+                        // NO tiene saldo normal, pero es VIP (Crédito)
+                        miDeuda += tramite.costo;
+                        tramite.fueCredito = true; 
+                        exitosos.push(tramite);
+
+                        const alerta = `🔔 *TRÁMITE A CRÉDITO (VIP)*\n👤 *ID:* \`${senderViejo}\`\n🏷️ *Grupo:* \`${aliasDelGrupo}\`\n🔑 *Trámite:* ${tramite.identificador} ${tramite.nombreServicio.toUpperCase()}\n💸 *Deuda acumulada:* $${miDeuda}.00`;
+                        
+                        let destinatarios = new Set([...SÚPER_ADMINS_NATOS]);
+                        if (configSistema.notificadoresGrupos[chatId]) configSistema.notificadoresGrupos[chatId].forEach(id => destinatarios.add(id));
+                        for (const destId of destinatarios) { try { await sock.sendMessage(toBaileys(destId), { text: alerta }); } catch (err) {} }
+
+                        if (configSistema.autoMode && configSistema.autoMode[chatId]) {
+                            if (configSistema.gruposProveedores && configSistema.gruposProveedores[chatId] && tramite.nombreServicio.startsWith('Acta')) {
+                                try { 
+                                    await sock.sendMessage(configSistema.gruposProveedores[chatId], { text: tramite.lineaOriginal }); 
+                                    configSistema.pendientes[tramite.identificador] = { grupoVentas: chatId, cliente: senderViejo, costo: tramite.costo };
+                                    guardarConfig(configSistema);
+                                } catch (err) {}
+                            }
+                        }
+
+                        // SISTEMA DE LEALTAD PARA VIP
+                        if (configSistema.loyaltyMode && configSistema.loyaltyMode[chatId]) {
+                            if (!configSistema.comprasUsuarios) configSistema.comprasUsuarios = {};
+                            if (!configSistema.comprasUsuarios[chatId]) configSistema.comprasUsuarios[chatId] = {};
+                            if (!configSistema.comprasUsuarios[chatId][senderViejo]) configSistema.comprasUsuarios[chatId][senderViejo] = 0;
+                            
+                            configSistema.comprasUsuarios[chatId][senderViejo] += 1;
+                            
+                            if (configSistema.comprasUsuarios[chatId][senderViejo] >= 10) {
+                                // Se lo descontamos directo de su deuda ya que está pidiendo fiado
+                                miDeuda -= 12;
+                                configSistema.comprasUsuarios[chatId][senderViejo] = 0; 
+                                mensajesLealtad += `\n🎁 *¡VIP ESTRELLA!* Completaste 10 trámites. ¡Te hemos descontado *$12.00* de tu deuda!\n`;
+                            }
+                            guardarConfig(configSistema);
+                        }
+
+                    } else {
+                        rechazados.push(tramite);
+                    }
                 }
 
-                if (exitosos.length > 0) { textoConfirmacion += `✅ *Trámite(s) registrado(s)*\n`; for (const ex of exitosos) textoConfirmacion += `📄 ${ex.identificador} (${ex.codigo}) (-$${ex.costo})\n`; }
+                // Guardar la deuda si compró a crédito
+                if (esVip) {
+                    if (!configSistema.deudas) configSistema.deudas = {};
+                    if (!configSistema.deudas[chatId]) configSistema.deudas[chatId] = {};
+                    configSistema.deudas[chatId][senderViejo] = miDeuda;
+                    guardarConfig(configSistema);
+                }
+
+                // Generar el recibo para el cliente
+                if (exitosos.length > 0) { 
+                    textoConfirmacion += `✅ *Trámite(s) registrado(s)*\n`; 
+                    for (const ex of exitosos) {
+                        if (ex.fueCredito) {
+                            textoConfirmacion += `📄 ${ex.identificador} (${ex.codigo}) *(Crédito VIP: +$${ex.costo})*\n`;
+                        } else {
+                            textoConfirmacion += `📄 ${ex.identificador} (${ex.codigo}) (-$${ex.costo})\n`;
+                        }
+                    }
+                }
+                
                 if (rechazados.length > 0) { textoConfirmacion += `\n❌ *Rechazados (Sin Saldo):*\n`; for (const rch of rechazados) textoConfirmacion += `⚠️ [${rch.identificador} (${rch.codigo})]\n`; }
 
-                saldosUsuarios[chatId][senderViejo] = saldoDisponible; guardarSaldos(saldosUsuarios);
+                saldosUsuarios[chatId][senderViejo] = saldoDisponible; 
+                guardarSaldos(saldosUsuarios);
+                
                 textoConfirmacion += mensajesLealtad; 
-                textoConfirmacion += `\n🔋 *Saldo disponible:* $${saldoDisponible}.00 MXN\nProcesando solicitud... ⌛`;
+                textoConfirmacion += `\n🔋 *Saldo a favor:* $${saldoDisponible}.00 MXN`;
+                
+                if (esVip) {
+                    textoConfirmacion += `\n💸 *Deuda VIP acumulada:* $${miDeuda}.00 MXN`;
+                    if (miDeuda > 0) textoConfirmacion += `\n*(⚠️ Recuerda liquidar tu deuda con la administración)*`;
+                }
+                
+                textoConfirmacion += `\nProcesando solicitud... ⌛`;
                 await responder(textoConfirmacion);
             }
         }
