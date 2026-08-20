@@ -177,7 +177,7 @@ async function iniciarBot() {
                                     }
                                 }
 
-                                // 2.2 Avisamos al cliente
+                                // 2.2 Avisamos al cliente (Cambiado a modo incógnito)
                                 let estadoFinanciero = fuePorDeuda 
                                     ? `💸 Se ha perdonado/restado *$${costo}.00* de tu deuda acumulada.\n⚠️ Deuda actual: $${configSistema.deudas[grupoVentas][cliente]}.00`
                                     : `💰 Se ha devuelto automáticamente *$${costo}.00* a tu saldo.\n🔋 Saldo actual: $${saldosUsuarios[grupoVentas][cliente]}.00`;
@@ -244,6 +244,8 @@ async function iniciarBot() {
 
 💳 *CLIENTES VIP (CRÉDITO)*
 • \`/vip [@user]\` : Da permiso a un cliente de pedir actas sin saldo (se le acumula como deuda).
+• \`/delvip [@user]\` : Le quita el permiso VIP a un usuario.
+• \`.vips\` : Muestra la lista de usuarios autorizados como VIP.
 • \`/liquidado [@user]\` : Pone la deuda del cliente VIP en ceros.
 • \`.deudores\` : Muestra la lista de todos los VIP que deben dinero.
 
@@ -295,15 +297,48 @@ async function iniciarBot() {
             if (!configSistema.vips[chatId]) configSistema.vips[chatId] = [];
 
             const indice = configSistema.vips[chatId].indexOf(targetUser);
+            if (indice === -1) {
+                configSistema.vips[chatId].push(targetUser);
+                guardarConfig(configSistema);
+                await sock.sendMessage(chatId, { text: `✅ @${targetUser.split('@')[0]} ahora es VIP.\nPuede solicitar trámites sin saldo y se le acumularán como deuda.`, mentions: [toBaileys(targetUser)] });
+            } else {
+                await sock.sendMessage(chatId, { text: `⚠️ @${targetUser.split('@')[0]} ya tenía el permiso VIP activo.`, mentions: [toBaileys(targetUser)] });
+            }
+            return;
+        }
+
+        if (textoMensaje.toLowerCase().startsWith('/delvip') && tienePermisoOperativo && esGrupo) {
+            let targetUser = extraerIdCitado();
+            if (!targetUser) { const args = textoMensaje.split(' '); if (args[1]) targetUser = args[1].includes('@') ? args[1] : `${args[1]}@c.us`; }
+            if (!targetUser) return await responder('⚠️ Etiqueta o cita al usuario para quitarle el VIP.');
+
+            if (!configSistema.vips) configSistema.vips = {};
+            if (!configSistema.vips[chatId]) configSistema.vips[chatId] = [];
+
+            const indice = configSistema.vips[chatId].indexOf(targetUser);
             if (indice > -1) {
                 configSistema.vips[chatId].splice(indice, 1);
                 guardarConfig(configSistema);
                 await sock.sendMessage(chatId, { text: `❌ @${targetUser.split('@')[0]} ya no es VIP. Deberá pagar por adelantado.`, mentions: [toBaileys(targetUser)] });
             } else {
-                configSistema.vips[chatId].push(targetUser);
-                guardarConfig(configSistema);
-                await sock.sendMessage(chatId, { text: `✅ @${targetUser.split('@')[0]} ahora es VIP.\nPuede solicitar trámites sin saldo y se le acumularán como deuda.`, mentions: [toBaileys(targetUser)] });
+                await sock.sendMessage(chatId, { text: `⚠️ @${targetUser.split('@')[0]} no era VIP.`, mentions: [toBaileys(targetUser)] });
             }
+            return;
+        }
+
+        if (textoMensaje.toLowerCase() === '.vips' && tienePermisoOperativo && esGrupo) {
+            let listaVips = configSistema.vips?.[chatId] || [];
+            if (listaVips.length === 0) return await responder('ℹ️ No hay clientes VIP registrados en este grupo.');
+
+            let textoVips = `🌟 *CLIENTES VIP AUTORIZADOS* 🌟\n\n`;
+            let mentions = [];
+            listaVips.forEach(usuario => {
+                const numeroPuro = usuario.split('@')[0];
+                textoVips += `👤 @${numeroPuro}\n`;
+                mentions.push(toBaileys(usuario));
+            });
+
+            await sock.sendMessage(chatId, { text: textoVips, mentions: mentions });
             return;
         }
 
