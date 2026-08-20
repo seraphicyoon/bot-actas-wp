@@ -29,8 +29,8 @@ function cargarConfig() {
             c.gruposProveedores = c.gruposProveedores || {}; 
             c.pendientes = c.pendientes || {}; 
             c.autoMode = c.autoMode || {}; 
-            c.comprasUsuarios = c.comprasUsuarios || {}; 
-            c.loyaltyMode = c.loyaltyMode || {}; 
+            c.comprasUsuarios = c.comprasUsuarios || {}; // Memoria de Lealtad
+            c.loyaltyMode = c.loyaltyMode || {}; // Interruptor de Lealtad
             c.vips = c.vips || {}; // Autorizados para pedir a crédito
             c.deudas = c.deudas || {}; // Registro de dinero que deben
             return c;
@@ -124,6 +124,7 @@ async function iniciarBot() {
                         const grupoVentas = datos.grupoVentas;
                         const cliente = datos.cliente;
 
+                        // Entregamos solo si el Auto Mode está activo
                         if (configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
                             const msgToForward = { key: msg.key, message: msg.message };
                             try {
@@ -146,6 +147,7 @@ async function iniciarBot() {
             
             if (esMensajeDeError && configSistema.pendientes) {
                 for (const [idTramite, datos] of Object.entries(configSistema.pendientes)) {
+                    // Si el proveedor escribió la CURP en el mensaje de error
                     if (textoMensaje.toUpperCase().includes(idTramite.toUpperCase())) {
                         const grupoVentas = datos.grupoVentas;
                         const cliente = datos.cliente;
@@ -329,14 +331,14 @@ async function iniciarBot() {
             if (listaVips.length === 0) return await responder('ℹ️ No hay clientes VIP registrados en este grupo.');
 
             let textoVips = `🌟 *CLIENTES VIP AUTORIZADOS* 🌟\n\n`;
-            let mentions = [];
+            let mencionesVIP = [];
             listaVips.forEach(usuario => {
                 const numeroPuro = usuario.split('@')[0];
                 textoVips += `👤 @${numeroPuro}\n`;
-                mentions.push(toBaileys(usuario));
+                mencionesVIP.push(toBaileys(usuario));
             });
 
-            await sock.sendMessage(chatId, { text: textoVips, mentions: mentions });
+            await sock.sendMessage(chatId, { text: textoVips, mentions: mencionesVIP });
             return;
         }
 
@@ -361,17 +363,19 @@ async function iniciarBot() {
             if (!deudasDelGrupo || Object.keys(deudasDelGrupo).length === 0) return await responder('✅ ¡Felicidades! Nadie te debe dinero en este grupo.');
 
             let listaDeudores = `💸 *LISTA DE DEUDORES VIP* 💸\n\n`; let hayDeudas = false;
+            let mencionesDeudores = [];
             for (const [usuario, deuda] of Object.entries(deudasDelGrupo)) {
                 if (deuda > 0) {
                     const numeroPuro = usuario.split('@')[0];
                     listaDeudores += `👤 @${numeroPuro}:\n💰 Debe: *$${deuda}.00 MXN*\n\n`; 
+                    mencionesDeudores.push(toBaileys(usuario));
                     hayDeudas = true; 
                 }
             }
             if (!hayDeudas) return await responder('✅ ¡Felicidades! Nadie te debe dinero en este grupo.');
             
             const fakeQuote = { key: { fromMe: false, participant: '0@s.whatsapp.net', id: '1234567890123456' }, message: { locationMessage: { name: 'WhatsApp ✅', address: '📋 REPORTE DE DEUDAS' } } };
-            await sock.sendMessage(chatId, { text: listaDeudores }, { quoted: fakeQuote }); return;
+            await sock.sendMessage(chatId, { text: listaDeudores, mentions: mencionesDeudores }, { quoted: fakeQuote }); return;
         }
 
         if (textoMensaje.toLowerCase() === '.deuda') {
@@ -715,17 +719,23 @@ async function iniciarBot() {
             if (!saldosDelGrupo || Object.keys(saldosDelGrupo).length === 0) return await responder('ℹ️ No hay saldos registrados en este grupo.');
 
             let listaSaldos = `🌸 *SALDOS DEL GRUPO* 🌸\n\n`; let haySaldos = false; let numerosVistos = new Set();
+            let mencionesSaldos = [];
             for (const [usuario, saldo] of Object.entries(saldosDelGrupo)) {
                 if (saldo > 0) {
                     const numeroPuro = usuario.split('@')[0]; let base = numeroPuro;
                     if (numeroPuro.startsWith('521')) base = numeroPuro.substring(3); else if (numeroPuro.startsWith('52')) base = numeroPuro.substring(2);
-                    if (!numerosVistos.has(base)) { numerosVistos.add(base); listaSaldos += `👤 +${numeroPuro}:\n💰 $${saldo}.00 MXN\n\n`; haySaldos = true; }
+                    if (!numerosVistos.has(base)) { 
+                        numerosVistos.add(base); 
+                        listaSaldos += `👤 @${numeroPuro}:\n💰 $${saldo}.00 MXN\n\n`; 
+                        mencionesSaldos.push(toBaileys(usuario));
+                        haySaldos = true; 
+                    }
                 }
             }
             if (!haySaldos) return await responder('ℹ️ Todos los usuarios de este grupo están en $0.00.');
             const footer = `│ 𝑁𝑎𝑒𝑣𝑖𝑠 𝐵𝑜𝑡\n│ ${new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })} (MX)`;
             const fakeQuote = { key: { fromMe: false, participant: '0@s.whatsapp.net', id: '1234567890123456' }, message: { locationMessage: { name: 'WhatsApp ✅', address: '📋 REPORTE DE SALDOS' } } };
-            await sock.sendMessage(chatId, { text: listaSaldos + footer }, { quoted: fakeQuote }); return;
+            await sock.sendMessage(chatId, { text: listaSaldos + footer, mentions: mencionesSaldos }, { quoted: fakeQuote }); return;
         }
 
         if (textoMensaje.toLowerCase() === '.versaldo') {
