@@ -29,10 +29,10 @@ function cargarConfig() {
             c.gruposProveedores = c.gruposProveedores || {}; 
             c.pendientes = c.pendientes || {}; 
             c.autoMode = c.autoMode || {}; 
-            c.comprasUsuarios = c.comprasUsuarios || {}; // Memoria de Lealtad
-            c.loyaltyMode = c.loyaltyMode || {}; // Interruptor de Lealtad
-            c.vips = c.vips || {}; // NUEVO: Autorizados para pedir a crédito
-            c.deudas = c.deudas || {}; // NUEVO: Registro de dinero que deben
+            c.comprasUsuarios = c.comprasUsuarios || {}; 
+            c.loyaltyMode = c.loyaltyMode || {}; 
+            c.vips = c.vips || {}; // Autorizados para pedir a crédito
+            c.deudas = c.deudas || {}; // Registro de dinero que deben
             return c;
         }
     } catch (e) {}
@@ -124,7 +124,6 @@ async function iniciarBot() {
                         const grupoVentas = datos.grupoVentas;
                         const cliente = datos.cliente;
 
-                        // Entregamos solo si el Auto Mode está activo
                         if (configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
                             const msgToForward = { key: msg.key, message: msg.message };
                             try {
@@ -147,7 +146,6 @@ async function iniciarBot() {
             
             if (esMensajeDeError && configSistema.pendientes) {
                 for (const [idTramite, datos] of Object.entries(configSistema.pendientes)) {
-                    // Si el proveedor escribió la CURP en el mensaje de error
                     if (textoMensaje.toUpperCase().includes(idTramite.toUpperCase())) {
                         const grupoVentas = datos.grupoVentas;
                         const cliente = datos.cliente;
