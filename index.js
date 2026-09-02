@@ -422,9 +422,17 @@ async function iniciarBot() {
             const args = textoMensaje.split(' ').filter(a => a.trim() !== ""); if (args.length < 3) return;
             let tipoServicio = args[1].toLowerCase(); const nuevoPrecio = parseInt(args[2], 10); if (isNaN(nuevoPrecio) || nuevoPrecio < 1) return;
             if (!configSistema.precios[chatId]) configSistema.precios[chatId] = { ...PRECIOS_BASE };
-            configSistema.precios[chatId][tipoServicio] = nuevoPrecio; 
+            
+            if (tipoServicio === 'acta') {
+                configSistema.precios[chatId].nacimiento = nuevoPrecio; configSistema.precios[chatId].nacimiento_nf = nuevoPrecio;
+                configSistema.precios[chatId].matrimonio = nuevoPrecio; configSistema.precios[chatId].matrimonio_mf = nuevoPrecio;
+                configSistema.precios[chatId].defuncion = nuevoPrecio; configSistema.precios[chatId].defuncion_df = nuevoPrecio;
+                configSistema.precios[chatId].divorcio = nuevoPrecio; configSistema.precios[chatId].divorcio_d0 = nuevoPrecio;
+            } else {
+                configSistema.precios[chatId][tipoServicio] = nuevoPrecio; 
+            }
             guardarConfig(configSistema); 
-            await responder(`✅ *Nuevo precio* para ${tipoServicio.toUpperCase()}: $${nuevoPrecio}.00`); 
+            await responder(`✅ *Nuevo precio* actualizado correctamente: $${nuevoPrecio}.00`); 
             return;
         }
 
@@ -479,7 +487,7 @@ async function iniciarBot() {
             const regexRfcClon = /^([A-Z&Ññ]{3,4}\d{6}[A-Z0-9]{3})\s(1)$/i;
             
             let tramitesAProcesar = [];
-            let p = configSistema.precios?.[chatId] || PRECIOS_BASE;
+            let preciosGrupo = configSistema.precios?.[chatId] || PRECIOS_BASE;
 
             for (const linea of lineas) {
                 const matchActa = linea.match(regexActas);
@@ -489,19 +497,22 @@ async function iniciarBot() {
 
                 if (matchActa) {
                     const codigo = matchActa[2].toUpperCase();
-                    let costoActa = p.nacimiento; let nombreServicio = "Acta de Nacimiento";
-                    if (codigo === '6') { costoActa = p.matrimonio; nombreServicio = "Acta de Matrimonio"; }
-                    else if (codigo === '7') { costoActa = p.defuncion; nombreServicio = "Acta de Defunción"; }
-                    else if (codigo === '8') { costoActa = p.divorcio; nombreServicio = "Acta de Divorcio"; }
-                    else if (codigo === 'NF') { costoActa = p.nacimiento_nf; nombreServicio = "Acta de Nacimiento (NF)"; }
-                    else if (codigo === 'MF') { costoActa = p.matrimonio_mf; nombreServicio = "Acta de Matrimonio Foliada (MF)"; }
-                    else if (codigo === 'DF') { costoActa = p.defuncion_df; nombreServicio = "Acta de Defunción (DF)"; }
-                    else if (codigo === 'D0') { costoActa = p.divorcio_d0; nombreServicio = "Acta de Divorcio (D0)"; }
+                    let costoActa = preciosGrupo.nacimiento; 
+                    let nombreServicio = "Acta de Nacimiento";
+                    
+                    if (codigo === '6') { costoActa = preciosGrupo.matrimonio; nombreServicio = "Acta de Matrimonio"; }
+                    else if (codigo === '7') { costoActa = preciosGrupo.defuncion; nombreServicio = "Acta de Defunción"; }
+                    else if (codigo === '8') { costoActa = preciosGrupo.divorcio; nombreServicio = "Acta de Divorcio"; }
+                    else if (codigo === 'NF') { costoActa = preciosGrupo.nacimiento_nf; nombreServicio = "Acta de Nacimiento (NF)"; }
+                    else if (codigo === 'MF') { costoActa = preciosGrupo.matrimonio_mf; nombreServicio = "Acta de Matrimonio Foliada (MF)"; }
+                    else if (codigo === 'DF') { costoActa = preciosGrupo.defuncion_df; nombreServicio = "Acta de Defunción (DF)"; }
+                    else if (codigo === 'D0') { costoActa = preciosGrupo.divorcio_d0; nombreServicio = "Acta de Divorcio (D0)"; }
+                    
                     tramitesAProcesar.push({ identificador: matchActa[1].toUpperCase(), codigo, costo: costoActa, nombreServicio, lineaOriginal: linea });
                 } else if (matchSat) {
-                    tramitesAProcesar.push({ identificador: `RFC: ${matchSat[1].toUpperCase()}`, codigo: matchSat[3], costo: p.sat, nombreServicio: "Constancia Fiscal", lineaOriginal: linea });
+                    tramitesAProcesar.push({ identificador: `RFC: ${matchSat[1].toUpperCase()}`, codigo: matchSat[3], costo: preciosGrupo.sat, nombreServicio: "Constancia Fiscal", lineaOriginal: linea });
                 } else if (matchRfcClon) {
-                    tramitesAProcesar.push({ identificador: `RFC CLON: ${matchRfcClon[1].toUpperCase()}`, codigo: matchRfcClon[2], costo: p.rfcclon, nombreServicio: "RFC Clon", lineaOriginal: linea });
+                    tramitesAProcesar.push({ identificador: `RFC CLON: ${matchRfcClon[1].toUpperCase()}`, codigo: matchRfcClon[2], costo: preciosGrupo.rfcclon, nombreServicio: "RFC Clon", lineaOriginal: linea });
                 }
             }
 
