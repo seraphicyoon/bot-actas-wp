@@ -50,20 +50,14 @@ async function iniciarBot() {
     const sock = makeWASocket({
         auth: state,
         logger: pino({ level: 'error' }), 
-        browser: ["NaevisPro", "Chrome", "3.0.0"]
+        browser: ["NaevisPro", "Chrome", "3.0.0"],
+        printQRInTerminal: true
     });
 
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update;
-        if (qr) {
-            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qr)}`;
-            console.log('\n======================================================');
-            console.log('🔗 ABRE ESTE ENLACE EN TU NAVEGADOR PARA ESCANEAR EL QR:');
-            console.log(qrUrl);
-            console.log('======================================================\n');
-        }
+        const { connection, lastDisconnect } = update;
         if (connection === 'close') {
             const shouldReconnect = (new Boom(lastDisconnect.error))?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) iniciarBot();
