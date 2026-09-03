@@ -112,6 +112,7 @@ async function iniciarBot() {
         let configSistema = cargarConfig();
         let saldosUsuarios = cargarSaldos();
 
+        // 1. AUTO-ENTREGA DE PDFS
         const docMsg = msg.message.documentMessage;
         if (docMsg && docMsg.fileName) {
             const fileNameUpper = docMsg.fileName.toUpperCase();
@@ -136,6 +137,7 @@ async function iniciarBot() {
             }
         }
 
+        // 2. AUTO-REEMBOLSOS
         if (textoMensaje) {
             const msgTextoLower = textoMensaje.toLowerCase();
             const esMensajeDeError = msgTextoLower.includes('no se encontró') || msgTextoLower.includes('no se encontro') || msgTextoLower.includes('no esta en sistema') || msgTextoLower.includes('no se encuentra');
@@ -202,6 +204,120 @@ async function iniciarBot() {
         const tienePermisoOperativo = deMiNumero || esDuenioDelGrupo || configSistema.vendedores?.includes(senderViejo) || esAdminDelGrupo;
         const esGrupoAutorizado = configSistema.gruposAutorizados.includes(chatId);
 
+        // ==========================================
+        // COMANDOS DE ADMINISTRACIÓN DE GRUPO (Restaurados)
+        // ==========================================
+        
+        if (textoMensaje.toLowerCase().startsWith('.n ') && tienePermisoOperativo && esGrupo) {
+            const anuncio = textoMensaje.slice(3).trim();
+            if (!anuncio) return await responder('⚠️ Escribe el mensaje.');
+            try {
+                const mentions = participantesGrupo.map(p => p.id);
+                const footer = `\n\n│ 𝑁𝑎𝑒𝑣𝑖𝑠 𝐵𝑜𝑡\n│ ${new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })} (MX)\n│ 👤 Enviado por: @${senderBaileys.split('@')[0]}`;
+                const textoEstetico = anuncio + footer;
+                const fakeQuote = { key: { fromMe: false, participant: '0@s.whatsapp.net', id: '1234567890123456' }, message: { locationMessage: { name: 'WhatsApp ✅', address: '📢 NOTIFICACIÓN' } } };
+
+                let isMedia = false;
+                let mediaType = null;
+                let mediaMsg = null;
+
+                if (msg.message.imageMessage) { 
+                    isMedia = true; mediaType = 'image'; mediaMsg = msg.message.imageMessage; 
+                } else if (msg.message.videoMessage) { 
+                    isMedia = true; mediaType = 'video'; mediaMsg = msg.message.videoMessage; 
+                } else {
+                    const quoted = msg.message.extendedTextMessage?.contextInfo?.quotedMessage;
+                    if (quoted?.imageMessage) { 
+                        isMedia = true; mediaType = 'image'; mediaMsg = quoted.imageMessage; 
+                    } else if (quoted?.videoMessage) { 
+                        isMedia = true; mediaType = 'video'; mediaMsg = quoted.videoMessage; 
+                    }
+                }
+
+                if (isMedia && mediaMsg) {
+                    const stream = await downloadContentFromMessage(mediaMsg, mediaType);
+                    let buffer = Buffer.from([]);
+                    for await(const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+                    
+                    if (mediaType === 'image') await sock.sendMessage(chatId, { image: buffer, caption: textoEstetico, mentions }, { quoted: fakeQuote });
+                    else await sock.sendMessage(chatId, { video: buffer, caption: textoEstetico, mentions }, { quoted: fakeQuote });
+                } else {
+                    await sock.sendMessage(chatId, { text: textoEstetico, mentions }, { quoted: fakeQuote });
+                }
+            } catch (e) { await responder(`⚠️ Error: ${e.message}`); } return;
+        }
+
+        if (textoMensaje.toLowerCase().startsWith('.kick') && tienePermisoOperativo && esGrupo) {
+            let target = extraerIdCitado();
+            if (!target) { const args = textoMensaje.split(' '); if (args[1]) target = args[1].includes('@') ? args[1] : `${args[1]}@c.us`; }
+            if (!target) return await responder('⚠️ Etiqueta o cita al usuario que deseas expulsar.');
+            try { await sock.groupParticipantsUpdate(chatId, [toBaileys(target)], "remove"); await responder('👢 *¡Usuario expulsado del grupo!*'); } catch (e) { await responder(`⚠️ Error al expulsar.`); } return;
+        }
+
+        if (textoMensaje.toLowerCase() === '.cerrar' && tienePermisoOperativo && esGrupo) {
+            try { await sock.groupSettingUpdate(chatId, 'announcement'); await responder('✅ *Grupo cerrado exitosamente.*'); } catch (e) {} return;
+        }
+
+        if (textoMensaje.toLowerCase() === '.abrir' && tienePermisoOperativo && esGrupo) {
+            try { await sock.groupSettingUpdate(chatId, 'not_announcement'); await responder('🔓 *Grupo abierto exitosamente.*'); } catch (e) {} return;
+        }
+
+        if (textoMensaje.toLowerCase() === '/activargrupo') {
+            if (!esGrupo || (!deMiNumero && !esAdminDelGrupo)) return;
+            if (!configSistema.gruposAutorizados.includes(chatId)) {
+                configSistema.gruposAutorizados.push(chatId);
+                let duenio = extraerIdCitado(); if (duenio) configSistema.propietariosGrupos[chatId] = duenio;
+                guardarConfig(configSistema); await responder('✅ *¡Grupo Activado con éxito!*');
+            } return;
+        }
+
+        if (textoMensaje.toLowerCase() === '/desactivargrupo') {
+            if (!esGrupo || (!deMiNumero && !esAdminDelGrupo)) return;
+            configSistema.gruposAutorizados = configSistema.gruposAutorizados.filter(id => id !== chatId);
+            delete configSistema.propietariosGrupos[chatId]; delete configSistema.notificadoresGrupos[chatId];
+            guardarConfig(configSistema); await responder('❌ *Grupo Desactivado y registros limpios.*'); return;
+        }
+
+        if (textoMensaje.toLowerCase().startsWith('/r ') && tienePermisoOperativo) {
+            try {
+                const args = textoMensaje.split(' ').filter(a => a.trim() !== ""); if (args.length < 2) return;
+                const aliasDestino = args[1].toLowerCase(); const idDelChatDestino = configSistema.gruposDestino[aliasDestino];
+                if (!idDelChatDestino) return await responder(`⚠️ El alias *${aliasDestino}* no existe.`);
+
+                let targetUser = "";
+                if (args.length > 2) { const posibleNum = args[2]; targetUser = posibleNum.includes('@') ? posibleNum : `${posibleNum}@c.us`; }
+
+                const quotedInfo = msg.message.extendedTextMessage?.contextInfo;
+                if (quotedInfo && quotedInfo.quotedMessage) {
+                    if (targetUser && !targetUser.includes('@g.us')) {
+                        await sock.sendMessage(idDelChatDestino, { text: `✅ ¡Tu trámite está listo! @${targetUser.split('@')[0]}`, mentions: [toBaileys(targetUser)] });
+                    }
+                    const msgToForward = { key: { remoteJid: chatId, fromMe: false, id: quotedInfo.stanzaId, participant: quotedInfo.participant }, message: quotedInfo.quotedMessage };
+                    await sock.sendMessage(idDelChatDestino, { forward: msgToForward });
+                    await responder(`✅ Documento reenviado a *${aliasDestino}*.`);
+                } else await responder('⚠️ Cita el archivo que deseas reenviar.');
+            } catch (error) { await responder('⚠️ Fallo al reenviar.'); } return;
+        }
+
+        if (textoMensaje.toLowerCase() === '.ver' && tienePermisoOperativo) {
+            const quoted = msg.message.extendedTextMessage?.contextInfo?.quotedMessage;
+            if (!quoted) return await responder('⚠️ Cita la imagen de una sola vez con el comando `.ver`.');
+            const viewOnceMsg = quoted.viewOnceMessage?.message || quoted.viewOnceMessageV2?.message || quoted.viewOnceMessageV2Extension?.message;
+            if (viewOnceMsg) {
+                try {
+                    const mediaMsg = viewOnceMsg.imageMessage || viewOnceMsg.videoMessage;
+                    if (!mediaMsg) return await responder('⚠️ No detecté un archivo válido.');
+                    const mediaType = viewOnceMsg.imageMessage ? 'image' : 'video';
+                    const stream = await downloadContentFromMessage(mediaMsg, mediaType);
+                    let buffer = Buffer.from([]);
+                    for await(const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+                    if (mediaType === 'image') await sock.sendMessage(chatId, { image: buffer, caption: '📸 *Recuperado*' }, { quoted: msg });
+                    else await sock.sendMessage(chatId, { video: buffer, caption: '🎥 *Recuperado*' }, { quoted: msg });
+                } catch (e) { await responder(`⚠️ Error: ${e.message}`); }
+            } else await responder('⚠️ El mensaje citado no es de 1 sola vez.');
+            return;
+        }
+
         if (textoMensaje.toLowerCase() === '.jinni' && tienePermisoOperativo) {
             const menu = `🌸 *GUÍA MAESTRA DE NAEVIS BOT* 🌸
 ¡Hola! Aquí tienes la explicación de todos los comandos disponibles:
@@ -231,10 +347,10 @@ async function iniciarBot() {
 
 💰 *FINANZAS Y VENTAS*
 • \`/precio [servicio] [$$]\` : Cambia precios.
-• \`/saldo [@user] [$$]\` : Añade saldo.
-• \`/priv [$$] [@user]\` : Añade saldo negativo/deuda a un usuario por ventas por privado.
+• \`/saldo [@user] [$$]\` : Añade o resta saldo (ej. /saldo -15 @user).
+• \`/priv [$$] [@user]\` : Registra venta por privado y descuenta saldo (si queda negativo, se vuelve deuda).
 • \`.saldos\` : Muestra saldos.
-• \`.r [alias] [@user]\` : Reenvía entregas manualmente.
+• \`/r [alias] [@user]\` : Reenvía entregas manualmente.
 
 │ 𝑁𝑎𝑒𝑣𝑖𝑠 𝐵𝑜𝑡
 │ Fecha: ${new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })} (MX)`;
@@ -442,70 +558,116 @@ async function iniciarBot() {
             return;
         }
 
-        // COMANDO CORREGIDO PARA GESTIONAR SALDOS (SOPORTA RESTAR DIRECTO CON NEGATIVOS O RESTAS)
+        // ==========================================
+        // COMANDO SALDO (Suma o resta directa blindada)
+        // ==========================================
         if (textoMensaje.toLowerCase().startsWith('/saldo') && esGrupo && tienePermisoOperativo) {
-            const args = textoMensaje.split(' ').filter(a => a.trim() !== "");
-            let targetUser = extraerIdCitado(); 
-            let montoPesos = 0;
+            let targetUser = extraerIdCitado();
+            const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
+            if (mentioned && mentioned.length > 0) targetUser = toViejo(mentioned[0]);
             
-            if (targetUser) {
-                // Si etiquetaron a alguien: /saldo @user -15 o /saldo @user 100
-                montoPesos = parseInt(args[1] || "0", 10) || 0;
-            } else if (args.length >= 3) {
-                // Si pusieron el número: /saldo 56... 100 o /saldo 56... -15
-                targetUser = args[1].includes('@') ? args[1] : `${args[1]}@c.us`;
-                montoPesos = parseInt(args[2] || "0", 10) || 0;
+            let content = textoMensaje.toLowerCase().replace('/saldo', '');
+            if (!targetUser) {
+                let phoneMatch = content.match(/52\d{10,11}/);
+                if (phoneMatch) targetUser = `${phoneMatch[0]}@c.us`;
             }
+            
+            let isNegative = content.includes('-');
+            let montoPesos = 0;
+            let numMatches = content.match(/\d+/g);
+            if (numMatches) {
+                for (let num of numMatches) {
+                    if (num.length < 5) { 
+                        montoPesos = parseInt(num, 10);
+                        break;
+                    }
+                }
+            }
+            
+            if (isNegative) montoPesos = -Math.abs(montoPesos);
 
-            if (targetUser && !isNaN(montoPesos)) {
+            if (targetUser && montoPesos !== 0) {
                 if (!saldosUsuarios[chatId]) saldosUsuarios[chatId] = {};
                 if (!saldosUsuarios[chatId][targetUser]) saldosUsuarios[chatId][targetUser] = 0;
                 
                 saldosUsuarios[chatId][targetUser] += montoPesos;
                 if (saldosUsuarios[chatId][targetUser] < 0) saldosUsuarios[chatId][targetUser] = 0;
 
-                // Espejo para variantes de formato de número de WhatsApp
                 const numPuro = targetUser.split('@')[0]; let base = numPuro;
                 if (numPuro.startsWith('521')) base = numPuro.substring(3); else if (numPuro.startsWith('52')) base = numPuro.substring(2);
                 saldosUsuarios[chatId][`521${base}@c.us`] = saldosUsuarios[chatId][targetUser];
                 saldosUsuarios[chatId][`52${base}@c.us`] = saldosUsuarios[chatId][targetUser];
 
                 guardarSaldos(saldosUsuarios);
-                await responder(`✅ *Saldo Actualizado*\n👤 *Usuario:* ${targetUser.split('@')[0]}\n💰 *Cambio:* ${montoPesos > 0 ? '+' : ''}${montoPesos}.00\n🔋 *Disponible:* $${saldosUsuarios[chatId][targetUser]}.00`);
-            } return;
+                await responder(`✅ *Saldo Actualizado*\n👤 *Usuario:* @${targetUser.split('@')[0]}\n💰 *Cambio:* ${montoPesos > 0 ? '+' : ''}${montoPesos}.00\n🔋 *Disponible:* $${saldosUsuarios[chatId][targetUser]}.00`);
+            } else {
+                await responder(`⚠️ Uso correcto: \`/saldo [monto] [@usuario]\` o \`/saldo -[monto] [@usuario]\``);
+            }
+            return;
         }
 
-        // NUEVO COMANDO: /priv [monto] [@user] para cobrar por privado descontando/agregando deuda
+        // ==========================================
+        // COMANDO PRIVADO (/priv) - Descuenta saldo, el sobrante se vuelve deuda VIP
+        // ==========================================
         if (textoMensaje.toLowerCase().startsWith('/priv') && esGrupo && tienePermisoOperativo) {
-            const args = textoMensaje.split(' ').filter(a => a.trim() !== "");
-            let targetUser = extraerIdCitado(); 
-            let montoPesos = 0;
-
-            if (targetUser) {
-                montoPesos = parseInt(args[1] || "0", 10) || 0;
-            } else if (args.length >= 3) {
-                targetUser = args[1].includes('@') ? args[1] : `${args[1]}@c.us`;
-                montoPesos = parseInt(args[2] || "0", 10) || 0;
+            let targetUser = extraerIdCitado();
+            const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
+            if (mentioned && mentioned.length > 0) targetUser = toViejo(mentioned[0]);
+            
+            let content = textoMensaje.toLowerCase().replace('/priv', '');
+            if (!targetUser) {
+                let phoneMatch = content.match(/52\d{10,11}/);
+                if (phoneMatch) targetUser = `${phoneMatch[0]}@c.us`;
+            }
+            
+            let montoDescontar = 0;
+            let numMatches = content.match(/\d+/g);
+            if (numMatches) {
+                for (let num of numMatches) {
+                    if (num.length < 5) {
+                        montoDescontar = parseInt(num, 10);
+                        break;
+                    }
+                }
             }
 
-            if (targetUser && montoPesos > 0) {
+            if (targetUser && montoDescontar > 0) {
                 if (!saldosUsuarios[chatId]) saldosUsuarios[chatId] = {};
                 if (!saldosUsuarios[chatId][targetUser]) saldosUsuarios[chatId][targetUser] = 0;
                 
-                saldosUsuarios[chatId][targetUser] -= montoPesos;
+                saldosUsuarios[chatId][targetUser] -= montoDescontar;
+                let fueADeuda = false;
+                let nuevaDeuda = 0;
+
+                // Si queda en números rojos, lo cortamos a 0 y la diferencia se clava en Deudas
                 if (saldosUsuarios[chatId][targetUser] < 0) {
                     let deficit = Math.abs(saldosUsuarios[chatId][targetUser]);
-                    saldosUsuarios[chatId][targetUser] = 0;
+                    saldosUsuarios[chatId][targetUser] = 0; 
                     
                     if (!configSistema.deudas) configSistema.deudas = {};
                     if (!configSistema.deudas[chatId]) configSistema.deudas[chatId] = {};
                     configSistema.deudas[chatId][targetUser] = (configSistema.deudas[chatId][targetUser] || 0) + deficit;
                     guardarConfig(configSistema);
+                    fueADeuda = true;
+                    nuevaDeuda = configSistema.deudas[chatId][targetUser];
                 }
+
+                const numPuro = targetUser.split('@')[0]; let base = numPuro;
+                if (numPuro.startsWith('521')) base = numPuro.substring(3); else if (numPuro.startsWith('52')) base = numPuro.substring(2);
+                saldosUsuarios[chatId][`521${base}@c.us`] = saldosUsuarios[chatId][targetUser];
+                saldosUsuarios[chatId][`52${base}@c.us`] = saldosUsuarios[chatId][targetUser];
+
                 guardarSaldos(saldosUsuarios);
-                await responder(`✅ *Venta por Privado Registrada*\n👤 *Usuario:* ${targetUser.split('@')[0]}\n💸 *Descontado:* -$${montoPesos}.00\n🔋 *Saldo restante:* $${saldosUsuarios[chatId][targetUser]}.00`);
+                
+                let msgResp = `✅ *Venta por Privado Registrada*\n👤 *Usuario:* @${targetUser.split('@')[0]}\n💸 *Cobrado:* -$${montoDescontar}.00\n🔋 *Saldo restante:* $${saldosUsuarios[chatId][targetUser]}.00`;
+                
+                if (fueADeuda) {
+                    msgResp += `\n⚠️ El usuario se quedó sin saldo y se le añadió una deuda de *$${nuevaDeuda}.00* para la próxima.`;
+                }
+                
+                await sock.sendMessage(chatId, { text: msgResp, mentions: [toBaileys(targetUser)] });
             } else {
-                await responder(`⚠️ Uso correcto: \`/priv [monto] [@usuario]\` o citando al usuario.`);
+                await responder(`⚠️ Usa: \`/priv [monto] [@usuario]\``);
             }
             return;
         }
@@ -536,9 +698,8 @@ async function iniciarBot() {
         if (textoMensaje.toLowerCase() === '.tramites') { if (esGrupo && !esGrupoAutorizado) return; await responder(configSistema.tramitesGrupos[chatId] || 'ℹ️ Sin trámites configurados.'); return; }
         if (textoMensaje.toLowerCase() === '.stock') { if (esGrupo && !esGrupoAutorizado) return; await responder(configSistema.stockGrupos[chatId] || 'ℹ️ Sin stock configurado.'); return; }
 
-        // BLOQUE CORREGIDO: Los comandos de grupo operan siempre si el usuario tiene permiso, sin requerir que el grupo esté en 'gruposAutorizados' para responder a mandatos de administración como .cerrar, .abrir, .n, .kick
         if (textoMensaje.startsWith('.') || textoMensaje.startsWith('/')) {
-            // Permitir que pasen los comandos administrativos sin bloquearse por gruposAutorizados
+            // Permitir que los administradores fallen comandos sin bloquear
         } else if (esGrupo && !esGrupoAutorizado) {
             return;
         }
@@ -556,7 +717,6 @@ async function iniciarBot() {
                 const matchActa = linea.match(regexActas);
                 const matchSat = linea.match(regexSat);
                 const matchRfcClon = linea.match(regexRfcClon);
-                const lineaLow = linea.toLowerCase();
 
                 if (matchActa) {
                     const codigo = matchActa[2].toUpperCase();
@@ -581,7 +741,8 @@ async function iniciarBot() {
                 let esVip = configSistema.vips?.[chatId]?.includes(senderViejo) || false;
                 let miDeuda = configSistema.deudas?.[chatId]?.[senderViejo] || 0;
 
-                if (saldoDisponible <= 0 && !esVip) return await responder(`⚠️ *AVISO* ⚠️\nNo cuentas con saldo suficiente.`);
+                // SI TIENE CERO O MENOS, LO BLOQUEAMOS DIRECTO ANTES DE ITERAR
+                if (saldoDisponible <= 0 && !esVip) return await responder(`⚠️ *AVISO* ⚠️\nNo cuentas con saldo suficiente para tramitar.`);
 
                 let aliasDelGrupo = "SIN ALIAS";
                 for (const [alias, id] of Object.entries(configSistema.gruposDestino || {})) { if (id === chatId) { aliasDelGrupo = alias; break; } }
@@ -662,7 +823,7 @@ async function iniciarBot() {
                     }
                 }
                 
-                if (rechazados.length > 0) { textoConfirmacion += `\n❌ *Rechazados (Sin Saldo)*\n`; }
+                if (rechazados.length > 0) { textoConfirmacion += `\n❌ *Rechazados (Sin Saldo Suficiente)*\n`; }
 
                 saldosUsuarios[chatId][senderViejo] = saldoDisponible; 
                 guardarSaldos(saldosUsuarios);
