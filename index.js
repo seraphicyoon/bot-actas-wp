@@ -232,8 +232,9 @@ async function iniciarBot() {
 💰 *FINANZAS Y VENTAS*
 • \`/precio [servicio] [$$]\` : Cambia precios.
 • \`/saldo [@user] [$$]\` : Añade saldo.
+• \`/priv [$$] [@user]\` : Añade saldo negativo/deuda a un usuario por ventas por privado.
 • \`.saldos\` : Muestra saldos.
-• \`/r [alias] [@user]\` : Reenvía entregas manualmente.
+• \`.r [alias] [@user]\` : Reenvía entregas manualmente.
 
 │ 𝑁𝑎𝑒𝑣𝑖𝑠 𝐵𝑜𝑡
 │ Fecha: ${new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })} (MX)`;
@@ -423,7 +424,6 @@ async function iniciarBot() {
             let tipoServicio = args[1].toLowerCase(); const nuevoPrecio = parseInt(args[2], 10); if (isNaN(nuevoPrecio) || nuevoPrecio < 1) return;
             if (!configSistema.precios[chatId]) configSistema.precios[chatId] = { ...PRECIOS_BASE };
             
-            // Si el usuario escribe "actas" o "acta", actualizamos todas las categorías de actas de golpe
             if (tipoServicio === 'actas' || tipoServicio === 'acta') {
                 configSistema.precios[chatId].nacimiento = nuevoPrecio; 
                 configSistema.precios[chatId].nacimiento_nf = nuevoPrecio;
@@ -442,20 +442,72 @@ async function iniciarBot() {
             return;
         }
 
+        // COMANDO CORREGIDO PARA GESTIONAR SALDOS (SOPORTA RESTAR DIRECTO CON NEGATIVOS O RESTAS)
         if (textoMensaje.toLowerCase().startsWith('/saldo') && esGrupo && tienePermisoOperativo) {
             const args = textoMensaje.split(' ').filter(a => a.trim() !== "");
-            let targetUser = extraerIdCitado(); let montoPesos = 0;
-            if (targetUser) montoPesos = parseInt(args[1] ? args[1].replace('+', '') : "0", 10) || 0;
-            else if (args.length === 3) { targetUser = (args[1].includes('@') ? args[1] : `${args[1]}@c.us`); montoPesos = parseInt(args[2], 10) || 0; }
+            let targetUser = extraerIdCitado(); 
+            let montoPesos = 0;
+            
+            if (targetUser) {
+                // Si etiquetaron a alguien: /saldo @user -15 o /saldo @user 100
+                montoPesos = parseInt(args[1] || "0", 10) || 0;
+            } else if (args.length >= 3) {
+                // Si pusieron el número: /saldo 56... 100 o /saldo 56... -15
+                targetUser = args[1].includes('@') ? args[1] : `${args[1]}@c.us`;
+                montoPesos = parseInt(args[2] || "0", 10) || 0;
+            }
 
             if (targetUser && !isNaN(montoPesos)) {
                 if (!saldosUsuarios[chatId]) saldosUsuarios[chatId] = {};
                 if (!saldosUsuarios[chatId][targetUser]) saldosUsuarios[chatId][targetUser] = 0;
+                
                 saldosUsuarios[chatId][targetUser] += montoPesos;
                 if (saldosUsuarios[chatId][targetUser] < 0) saldosUsuarios[chatId][targetUser] = 0;
+
+                // Espejo para variantes de formato de número de WhatsApp
+                const numPuro = targetUser.split('@')[0]; let base = numPuro;
+                if (numPuro.startsWith('521')) base = numPuro.substring(3); else if (numPuro.startsWith('52')) base = numPuro.substring(2);
+                saldosUsuarios[chatId][`521${base}@c.us`] = saldosUsuarios[chatId][targetUser];
+                saldosUsuarios[chatId][`52${base}@c.us`] = saldosUsuarios[chatId][targetUser];
+
                 guardarSaldos(saldosUsuarios);
-                await responder(`✅ *Saldo Asignado*\n👤 *Usuario:* ${targetUser.split('@')[0]}\n💰 *Disponible:* $${saldosUsuarios[chatId][targetUser]}.00`);
+                await responder(`✅ *Saldo Actualizado*\n👤 *Usuario:* ${targetUser.split('@')[0]}\n💰 *Cambio:* ${montoPesos > 0 ? '+' : ''}${montoPesos}.00\n🔋 *Disponible:* $${saldosUsuarios[chatId][targetUser]}.00`);
             } return;
+        }
+
+        // NUEVO COMANDO: /priv [monto] [@user] para cobrar por privado descontando/agregando deuda
+        if (textoMensaje.toLowerCase().startsWith('/priv') && esGrupo && tienePermisoOperativo) {
+            const args = textoMensaje.split(' ').filter(a => a.trim() !== "");
+            let targetUser = extraerIdCitado(); 
+            let montoPesos = 0;
+
+            if (targetUser) {
+                montoPesos = parseInt(args[1] || "0", 10) || 0;
+            } else if (args.length >= 3) {
+                targetUser = args[1].includes('@') ? args[1] : `${args[1]}@c.us`;
+                montoPesos = parseInt(args[2] || "0", 10) || 0;
+            }
+
+            if (targetUser && montoPesos > 0) {
+                if (!saldosUsuarios[chatId]) saldosUsuarios[chatId] = {};
+                if (!saldosUsuarios[chatId][targetUser]) saldosUsuarios[chatId][targetUser] = 0;
+                
+                saldosUsuarios[chatId][targetUser] -= montoPesos;
+                if (saldosUsuarios[chatId][targetUser] < 0) {
+                    let deficit = Math.abs(saldosUsuarios[chatId][targetUser]);
+                    saldosUsuarios[chatId][targetUser] = 0;
+                    
+                    if (!configSistema.deudas) configSistema.deudas = {};
+                    if (!configSistema.deudas[chatId]) configSistema.deudas[chatId] = {};
+                    configSistema.deudas[chatId][targetUser] = (configSistema.deudas[chatId][targetUser] || 0) + deficit;
+                    guardarConfig(configSistema);
+                }
+                guardarSaldos(saldosUsuarios);
+                await responder(`✅ *Venta por Privado Registrada*\n👤 *Usuario:* ${targetUser.split('@')[0]}\n💸 *Descontado:* -$${montoPesos}.00\n🔋 *Saldo restante:* $${saldosUsuarios[chatId][targetUser]}.00`);
+            } else {
+                await responder(`⚠️ Uso correcto: \`/priv [monto] [@usuario]\` o citando al usuario.`);
+            }
+            return;
         }
 
         if ((textoMensaje.toLowerCase() === '.saldos' || textoMensaje.toLowerCase() === '/saldos') && tienePermisoOperativo && esGrupo) {
@@ -484,7 +536,12 @@ async function iniciarBot() {
         if (textoMensaje.toLowerCase() === '.tramites') { if (esGrupo && !esGrupoAutorizado) return; await responder(configSistema.tramitesGrupos[chatId] || 'ℹ️ Sin trámites configurados.'); return; }
         if (textoMensaje.toLowerCase() === '.stock') { if (esGrupo && !esGrupoAutorizado) return; await responder(configSistema.stockGrupos[chatId] || 'ℹ️ Sin stock configurado.'); return; }
 
-        if (esGrupo && !esGrupoAutorizado) return;
+        // BLOQUE CORREGIDO: Los comandos de grupo operan siempre si el usuario tiene permiso, sin requerir que el grupo esté en 'gruposAutorizados' para responder a mandatos de administración como .cerrar, .abrir, .n, .kick
+        if (textoMensaje.startsWith('.') || textoMensaje.startsWith('/')) {
+            // Permitir que pasen los comandos administrativos sin bloquearse por gruposAutorizados
+        } else if (esGrupo && !esGrupoAutorizado) {
+            return;
+        }
 
         if (!textoMensaje.startsWith('/') && !textoMensaje.startsWith('.')) {
             const lineas = textoMensaje.split('\n').map(l => l.trim()).filter(l => l !== "");
@@ -493,7 +550,6 @@ async function iniciarBot() {
             const regexRfcClon = /^([A-Z&Ññ]{3,4}\d{6}[A-Z0-9]{3})\s(1)$/i;
             
             let tramitesAProcesar = [];
-            // Aquí corregimos para que cargue los precios dinámicos del grupo o use PRECIOS_BASE
             let p = configSistema.precios?.[chatId] || PRECIOS_BASE;
 
             for (const linea of lineas) {
