@@ -35,7 +35,7 @@ function cargarConfig() {
             c.vips = c.vips || {}; 
             c.deudas = c.deudas || {}; 
             c.deudasCantidad = c.deudasCantidad || {}; 
-            c.corte = c.corte || {}; // Convertido a objeto para que sea por grupo
+            c.corte = c.corte || {};
             c.renapoActivo = c.renapoActivo !== undefined ? c.renapoActivo : true;
             return c;
         }
@@ -131,6 +131,7 @@ async function iniciarBot() {
         let configSistema = cargarConfig();
         let saldosUsuarios = cargarSaldos();
 
+        // 1. AUTO-ENTREGA DE PDFS
         const docMsg = msg.message.documentMessage;
         if (docMsg && docMsg.fileName) {
             const fileNameUpper = docMsg.fileName.toUpperCase();
@@ -155,6 +156,7 @@ async function iniciarBot() {
             }
         }
 
+        // 2. AUTO-REEMBOLSOS
         if (textoMensaje) {
             const msgTextoLower = textoMensaje.toLowerCase();
             const esMensajeDeError = msgTextoLower.includes('no se encontró') || msgTextoLower.includes('no se encontro') || msgTextoLower.includes('no esta en sistema') || msgTextoLower.includes('no se encuentra');
@@ -237,9 +239,9 @@ async function iniciarBot() {
         const esGrupoAutorizado = configSistema.gruposAutorizados.includes(chatId);
 
         // ==========================================
-        // NUEVOS COMANDOS: .comandos Y CORTE DE CAJA (Privado y Grupal)
+        // COMANDOS DE ADMINISTRACIÓN Y GENERALES
         // ==========================================
-        
+
         if (textoMensaje.toLowerCase() === '.comandos') {
             const menuCmd = `📖 *CÓMO PEDIR TRÁMITES* 📖
 Envía tus datos con el siguiente formato (separado por un espacio):
@@ -351,7 +353,7 @@ Envía tus datos con el siguiente formato (separado por un espacio):
         if (textoMensaje.toLowerCase().startsWith('.kick') && tienePermisoOperativo && esGrupo) {
             let target = extraerIdCitado();
             if (!target) { const args = textoMensaje.split(' '); if (args[1]) target = args[1].includes('@') ? args[1] : `${args[1]}@c.us`; }
-            if (!target) return await responder('⚠️ Etiqueta o cita al usuario que deseas expulsar.');
+            if (!target || target.trim() === '') return await responder('⚠️ Etiqueta o cita al usuario que deseas expulsar.');
             try { await sock.groupParticipantsUpdate(chatId, [toBaileys(target)], "remove"); await responder('👢 *¡Usuario expulsado del grupo!*'); } catch (e) { await responder(`⚠️ Error al expulsar.`); } return;
         }
 
@@ -400,23 +402,31 @@ Envía tus datos con el siguiente formato (separado por un espacio):
             } catch (error) { await responder('⚠️ Fallo al reenviar.'); } return;
         }
 
+        // ==========================================
+        // COMANDO .VER REPARADO (CUBRE TODAS LAS VERSIONES DE VIEW ONCE)
+        // ==========================================
         if (textoMensaje.toLowerCase() === '.ver' && tienePermisoOperativo) {
             const quotedMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
             if (!quotedMsg) return await responder('⚠️ Cita la imagen o video de "1 sola vez".');
             
+            // Busca la bandera viewOnce tanto en el formato V2/V3 nuevo como en el formato directo
             let viewOnce = quotedMsg.viewOnceMessage?.message || quotedMsg.viewOnceMessageV2?.message || quotedMsg.viewOnceMessageV2Extension?.message;
-            if (viewOnce) {
+            let isDirectViewOnce = quotedMsg.imageMessage?.viewOnce || quotedMsg.videoMessage?.viewOnce;
+
+            if (viewOnce || isDirectViewOnce) {
                 try {
-                    const mediaType = viewOnce.imageMessage ? 'image' : (viewOnce.videoMessage ? 'video' : null);
-                    if (!mediaType) return await responder('⚠️ Solo puedo revelar fotos o videos.');
-                    const mediaMsg = viewOnce[mediaType + 'Message'];
+                    let mediaMsg = viewOnce ? (viewOnce.imageMessage || viewOnce.videoMessage) : (quotedMsg.imageMessage || quotedMsg.videoMessage);
+                    let mediaType = (viewOnce ? viewOnce.imageMessage : quotedMsg.imageMessage) ? 'image' : 'video';
+                    
+                    if (!mediaMsg) return await responder('⚠️ No detecté un archivo válido.');
+                    
                     const stream = await downloadContentFromMessage(mediaMsg, mediaType);
                     let buffer = Buffer.from([]);
                     for await(const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
                     
                     if (mediaType === 'image') await sock.sendMessage(chatId, { image: buffer, caption: '📸 *Revelado por Naevis*' }, { quoted: msg });
                     else await sock.sendMessage(chatId, { video: buffer, caption: '🎥 *Revelado por Naevis*' }, { quoted: msg });
-                } catch (e) { await responder(`⚠️ Error al descargar: ${e.message}`); }
+                } catch (e) { await responder(`⚠️ Error al descargar el archivo: ${e.message}`); }
             } else {
                 await responder('⚠️ El mensaje que citaste no es un archivo de "1 sola vez".');
             }
@@ -463,18 +473,27 @@ Envía tus datos con el siguiente formato (separado por un espacio):
             return;
         }
 
+        // ==========================================
+        // COMANDOS ADDVENDEDOR REPARADOS (EVITAN ERRORES DE USUARIO VACÍO)
+        // ==========================================
         if (textoMensaje.toLowerCase().startsWith('/addvendedor') && deMiNumero) {
             let targetUser = extraerIdCitado();
             const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
             if (!targetUser && mentioned && mentioned.length > 0) targetUser = toViejo(mentioned[0]);
             
-            let content = textoMensaje.toLowerCase().replace('/addvendedor', '');
-            if (!targetUser) {
-                let phoneMatch = content.match(/52\d{10,11}/);
-                if (phoneMatch) targetUser = `${phoneMatch[0]}@c.us`;
+            let content = textoMensaje.toLowerCase().replace('/addvendedor', '').trim();
+            if (!targetUser && content !== '') {
+                let phoneMatch = content.match(/\d+/g);
+                if (phoneMatch) {
+                    let num = phoneMatch.join('');
+                    if (num.length >= 10) targetUser = num.startsWith('52') ? `${num}@c.us` : `521${num}@c.us`;
+                }
             }
 
-            if (!targetUser) return await responder('⚠️ Etiqueta o cita al usuario.');
+            if (!targetUser || targetUser.includes('undefined') || targetUser === '@c.us' || targetUser === '521@c.us') {
+                return await responder('⚠️ Etiqueta, cita o escribe el número del usuario.');
+            }
+            
             if (!configSistema.vendedores) configSistema.vendedores = [];
             if (!configSistema.vendedores.includes(targetUser)) {
                 configSistema.vendedores.push(targetUser);
@@ -489,13 +508,19 @@ Envía tus datos con el siguiente formato (separado por un espacio):
             const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
             if (!targetUser && mentioned && mentioned.length > 0) targetUser = toViejo(mentioned[0]);
             
-            let content = textoMensaje.toLowerCase().replace('/delvendedor', '');
-            if (!targetUser) {
-                let phoneMatch = content.match(/52\d{10,11}/);
-                if (phoneMatch) targetUser = `${phoneMatch[0]}@c.us`;
+            let content = textoMensaje.toLowerCase().replace('/delvendedor', '').trim();
+            if (!targetUser && content !== '') {
+                let phoneMatch = content.match(/\d+/g);
+                if (phoneMatch) {
+                    let num = phoneMatch.join('');
+                    if (num.length >= 10) targetUser = num.startsWith('52') ? `${num}@c.us` : `521${num}@c.us`;
+                }
             }
 
-            if (!targetUser) return await responder('⚠️ Etiqueta o cita al usuario.');
+            if (!targetUser || targetUser.includes('undefined') || targetUser === '@c.us' || targetUser === '521@c.us') {
+                return await responder('⚠️ Etiqueta, cita o escribe el número del usuario.');
+            }
+            
             if (configSistema.vendedores) {
                 configSistema.vendedores = configSistema.vendedores.filter(id => id !== targetUser);
                 guardarConfig(configSistema);
@@ -509,13 +534,18 @@ Envía tus datos con el siguiente formato (separado por un espacio):
             const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
             if (!targetUser && mentioned && mentioned.length > 0) targetUser = toViejo(mentioned[0]);
 
-            if (!targetUser) {
-                let content = textoMensaje.toLowerCase().replace('/vip', '');
-                let phoneMatch = content.match(/52\d{10,11}/);
-                if (phoneMatch) targetUser = `${phoneMatch[0]}@c.us`;
+            let content = textoMensaje.toLowerCase().replace('/vip', '').trim();
+            if (!targetUser && content !== '') {
+                let phoneMatch = content.match(/\d+/g);
+                if (phoneMatch) {
+                    let num = phoneMatch.join('');
+                    if (num.length >= 10) targetUser = num.startsWith('52') ? `${num}@c.us` : `521${num}@c.us`;
+                }
             }
 
-            if (!targetUser) return await responder('⚠️ Etiqueta o cita al usuario que será VIP.');
+            if (!targetUser || targetUser.includes('undefined') || targetUser === '@c.us' || targetUser === '521@c.us') {
+                return await responder('⚠️ Etiqueta o cita al usuario que será VIP.');
+            }
 
             if (!configSistema.vips) configSistema.vips = {};
             if (!configSistema.vips[chatId]) configSistema.vips[chatId] = [];
@@ -536,13 +566,18 @@ Envía tus datos con el siguiente formato (separado por un espacio):
             const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
             if (!targetUser && mentioned && mentioned.length > 0) targetUser = toViejo(mentioned[0]);
 
-            if (!targetUser) {
-                let content = textoMensaje.toLowerCase().replace('/delvip', '');
-                let phoneMatch = content.match(/52\d{10,11}/);
-                if (phoneMatch) targetUser = `${phoneMatch[0]}@c.us`;
+            let content = textoMensaje.toLowerCase().replace('/delvip', '').trim();
+            if (!targetUser && content !== '') {
+                let phoneMatch = content.match(/\d+/g);
+                if (phoneMatch) {
+                    let num = phoneMatch.join('');
+                    if (num.length >= 10) targetUser = num.startsWith('52') ? `${num}@c.us` : `521${num}@c.us`;
+                }
             }
 
-            if (!targetUser) return await responder('⚠️ Etiqueta o cita al usuario.');
+            if (!targetUser || targetUser.includes('undefined') || targetUser === '@c.us' || targetUser === '521@c.us') {
+                return await responder('⚠️ Etiqueta o cita al usuario.');
+            }
 
             if (!configSistema.vips) configSistema.vips = {};
             if (!configSistema.vips[chatId]) configSistema.vips[chatId] = [];
@@ -579,13 +614,18 @@ Envía tus datos con el siguiente formato (separado por un espacio):
             const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
             if (!targetUser && mentioned && mentioned.length > 0) targetUser = toViejo(mentioned[0]);
 
-            if (!targetUser) {
-                let content = textoMensaje.toLowerCase().replace('/liquidado', '');
-                let phoneMatch = content.match(/52\d{10,11}/);
-                if (phoneMatch) targetUser = `${phoneMatch[0]}@c.us`;
+            let content = textoMensaje.toLowerCase().replace('/liquidado', '').trim();
+            if (!targetUser && content !== '') {
+                let phoneMatch = content.match(/\d+/g);
+                if (phoneMatch) {
+                    let num = phoneMatch.join('');
+                    if (num.length >= 10) targetUser = num.startsWith('52') ? `${num}@c.us` : `521${num}@c.us`;
+                }
             }
 
-            if (!targetUser) return await responder('⚠️ Etiqueta o cita al usuario.');
+            if (!targetUser || targetUser.includes('undefined') || targetUser === '@c.us' || targetUser === '521@c.us') {
+                return await responder('⚠️ Etiqueta o cita al usuario.');
+            }
 
             if (!configSistema.deudas) configSistema.deudas = {};
             if (!configSistema.deudas[chatId]) configSistema.deudas[chatId] = {};
@@ -743,10 +783,17 @@ Envía tus datos con el siguiente formato (separado por un espacio):
             const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
             if (mentioned && mentioned.length > 0) targetUser = toViejo(mentioned[0]);
             
-            let content = textoMensaje.toLowerCase().replace('/saldo', '');
-            if (!targetUser) {
-                let phoneMatch = content.match(/52\d{10,11}/);
-                if (phoneMatch) targetUser = `${phoneMatch[0]}@c.us`;
+            let content = textoMensaje.toLowerCase().replace('/saldo', '').trim();
+            if (!targetUser && content !== '') {
+                let phoneMatch = content.match(/\d+/g);
+                if (phoneMatch) {
+                    let num = phoneMatch.join('');
+                    if (num.length >= 10) targetUser = num.startsWith('52') ? `${num}@c.us` : `521${num}@c.us`;
+                }
+            }
+
+            if (!targetUser || targetUser.includes('undefined') || targetUser === '@c.us' || targetUser === '521@c.us') {
+                return await responder(`⚠️ Uso correcto: \`/saldo [monto] [@usuario]\` o \`/saldo -[monto] [@usuario]\``);
             }
             
             let isNegative = content.includes('-');
@@ -763,7 +810,7 @@ Envía tus datos con el siguiente formato (separado por un espacio):
             
             if (isNegative) montoPesos = -Math.abs(montoPesos);
 
-            if (targetUser && montoPesos !== 0) {
+            if (montoPesos !== 0) {
                 if (!saldosUsuarios[targetGroup]) saldosUsuarios[targetGroup] = {};
                 if (!saldosUsuarios[targetGroup][targetUser]) saldosUsuarios[targetGroup][targetUser] = 0;
                 
@@ -778,7 +825,7 @@ Envía tus datos con el siguiente formato (separado por un espacio):
                 guardarSaldos(saldosUsuarios);
                 await responder(`✅ *Saldo Actualizado*\n👤 *Usuario:* @${targetUser.split('@')[0]}\n💰 *Cambio:* ${montoPesos > 0 ? '+' : ''}${montoPesos}.00\n🔋 *Disponible:* $${saldosUsuarios[targetGroup][targetUser]}.00`);
             } else {
-                await responder(`⚠️ Uso correcto: \`/saldo [monto] [@usuario]\` o \`/saldo -[monto] [@usuario]\``);
+                await responder(`⚠️ Falta poner el monto de saldo.`);
             }
             return;
         }
@@ -788,10 +835,17 @@ Envía tus datos con el siguiente formato (separado por un espacio):
             const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
             if (mentioned && mentioned.length > 0) targetUser = toViejo(mentioned[0]);
             
-            let content = textoMensaje.toLowerCase().replace('/priv', '');
-            if (!targetUser) {
-                let phoneMatch = content.match(/52\d{10,11}/);
-                if (phoneMatch) targetUser = `${phoneMatch[0]}@c.us`;
+            let content = textoMensaje.toLowerCase().replace('/priv', '').trim();
+            if (!targetUser && content !== '') {
+                let phoneMatch = content.match(/\d+/g);
+                if (phoneMatch) {
+                    let num = phoneMatch.join('');
+                    if (num.length >= 10) targetUser = num.startsWith('52') ? `${num}@c.us` : `521${num}@c.us`;
+                }
+            }
+
+            if (!targetUser || targetUser.includes('undefined') || targetUser === '@c.us' || targetUser === '521@c.us') {
+                return await responder(`⚠️ Usa: \`/priv [monto] [@usuario]\``);
             }
             
             let montoDescontar = 0;
@@ -805,7 +859,7 @@ Envía tus datos con el siguiente formato (separado por un espacio):
                 }
             }
 
-            if (targetUser && montoDescontar > 0) {
+            if (montoDescontar > 0) {
                 if (!saldosUsuarios[chatId]) saldosUsuarios[chatId] = {};
                 if (!saldosUsuarios[chatId][targetUser]) saldosUsuarios[chatId][targetUser] = 0;
                 
@@ -846,7 +900,7 @@ Envía tus datos con el siguiente formato (separado por un espacio):
                 
                 await sock.sendMessage(chatId, { text: msgResp, mentions: [toBaileys(targetUser)] });
             } else {
-                await responder(`⚠️ Usa: \`/priv [monto] [@usuario]\``);
+                await responder(`⚠️ Falta especificar el monto. Usa: \`/priv [monto] [@usuario]\``);
             }
             return;
         }
