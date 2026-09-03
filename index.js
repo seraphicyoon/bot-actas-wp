@@ -34,10 +34,13 @@ function cargarConfig() {
             c.loyaltyMode = c.loyaltyMode || {}; 
             c.vips = c.vips || {}; 
             c.deudas = c.deudas || {}; 
+            c.deudasCantidad = c.deudasCantidad || {}; 
+            c.corte = c.corte || {}; // Convertido a objeto para que sea por grupo
+            c.renapoActivo = c.renapoActivo !== undefined ? c.renapoActivo : true;
             return c;
         }
     } catch (e) {}
-    const init = { gruposAutorizados: [], vendedores: [], superAdmins: [], gruposDestino: {}, precios: {}, propietariosGrupos: {}, notificadoresGrupos: {}, stockGrupos: {}, pagosGrupos: {}, tramitesGrupos: {}, gruposProveedores: {}, pendientes: {}, autoMode: {}, comprasUsuarios: {}, loyaltyMode: {}, vips: {}, deudas: {} };
+    const init = { gruposAutorizados: [], vendedores: [], superAdmins: [], gruposDestino: {}, precios: {}, propietariosGrupos: {}, notificadoresGrupos: {}, stockGrupos: {}, pagosGrupos: {}, tramitesGrupos: {}, gruposProveedores: {}, pendientes: {}, autoMode: {}, comprasUsuarios: {}, loyaltyMode: {}, vips: {}, deudas: {}, deudasCantidad: {}, corte: {}, renapoActivo: true };
     fs.writeFileSync(PATH_CONFIG, JSON.stringify(init, null, 4), 'utf8'); return init;
 }
 function guardarConfig(config) { try { fs.writeFileSync(PATH_CONFIG, JSON.stringify(config, null, 4), 'utf8'); } catch (e) {} }
@@ -71,6 +74,22 @@ async function iniciarBot() {
             if (shouldReconnect) iniciarBot();
         } else if (connection === 'open') {
             console.log('🚀 ¡MOTOR DESDE CERO EN LÍNEA!');
+        }
+    });
+
+    // SISTEMA DE BIENVENIDA (MARCA BLANCA / NEUTRA)
+    sock.ev.on('group-participants.update', async (evento) => {
+        let config = cargarConfig();
+        const chatId = evento.id;
+        if (!config.gruposAutorizados.includes(chatId)) return;
+        
+        if (evento.action === 'add') {
+            for (const participante of evento.participants) {
+                try {
+                    const textoBienvenida = `👋 ¡Bienvenido/a al grupo! 🌸\n\n@${participante.split('@')[0]}, nos da gusto tenerte aquí.\n\n📖 Para aprender a pedir escribe: *.comandos*\n📋 Para ver lo que vendemos: *.tramites*\n💳 Para ver nuestras cuentas: *.pago*\n\n¡Cualquier duda, etiqueta a un administrador! ✨`;
+                    await sock.sendMessage(chatId, { text: textoBienvenida, mentions: [participante] });
+                } catch(e) {}
+            }
         }
     });
 
@@ -112,7 +131,6 @@ async function iniciarBot() {
         let configSistema = cargarConfig();
         let saldosUsuarios = cargarSaldos();
 
-        // 1. AUTO-ENTREGA DE PDFS
         const docMsg = msg.message.documentMessage;
         if (docMsg && docMsg.fileName) {
             const fileNameUpper = docMsg.fileName.toUpperCase();
@@ -137,7 +155,6 @@ async function iniciarBot() {
             }
         }
 
-        // 2. AUTO-REEMBOLSOS
         if (textoMensaje) {
             const msgTextoLower = textoMensaje.toLowerCase();
             const esMensajeDeError = msgTextoLower.includes('no se encontró') || msgTextoLower.includes('no se encontro') || msgTextoLower.includes('no esta en sistema') || msgTextoLower.includes('no se encuentra');
@@ -154,12 +171,27 @@ async function iniciarBot() {
                                 let fuePorDeuda = false;
                                 if (configSistema.deudas && configSistema.deudas[grupoVentas] && configSistema.deudas[grupoVentas][cliente] >= costo) {
                                     configSistema.deudas[grupoVentas][cliente] -= costo;
+                                    if (configSistema.deudasCantidad && configSistema.deudasCantidad[grupoVentas] && configSistema.deudasCantidad[grupoVentas][cliente] > 0) {
+                                        configSistema.deudasCantidad[grupoVentas][cliente] -= 1;
+                                    }
+                                    
+                                    if (configSistema.corte && configSistema.corte[grupoVentas]) {
+                                        configSistema.corte[grupoVentas].tramites -= 1;
+                                        configSistema.corte[grupoVentas].ganancia -= costo;
+                                    }
+                                    
                                     guardarConfig(configSistema);
                                     fuePorDeuda = true;
                                 } else {
                                     if (!saldosUsuarios[grupoVentas]) saldosUsuarios[grupoVentas] = {};
                                     if (!saldosUsuarios[grupoVentas][cliente]) saldosUsuarios[grupoVentas][cliente] = 0;
                                     saldosUsuarios[grupoVentas][cliente] += costo;
+                                    
+                                    if (configSistema.corte && configSistema.corte[grupoVentas]) {
+                                        configSistema.corte[grupoVentas].tramites -= 1;
+                                        configSistema.corte[grupoVentas].ganancia -= costo;
+                                    }
+                                    guardarConfig(configSistema);
                                     guardarSaldos(saldosUsuarios);
                                 }
 
@@ -205,8 +237,77 @@ async function iniciarBot() {
         const esGrupoAutorizado = configSistema.gruposAutorizados.includes(chatId);
 
         // ==========================================
-        // COMANDOS DE ADMINISTRACIÓN DE GRUPO (Restaurados)
+        // NUEVOS COMANDOS: .comandos Y CORTE DE CAJA (Privado y Grupal)
         // ==========================================
+        
+        if (textoMensaje.toLowerCase() === '.comandos') {
+            const menuCmd = `📖 *CÓMO PEDIR TRÁMITES* 📖
+Envía tus datos con el siguiente formato (separado por un espacio):
+
+📄 *ACTAS:* [CURP] [CÓDIGO]
+• Nacimiento: \`CURP 5\` o \`CURP NF\`
+• Matrimonio: \`CURP 6\` o \`CURP MF\`
+• Defunción: \`CURP 7\` o \`CURP DF\`
+• Divorcio: \`CURP 8\` o \`CURP D0\`
+
+🏢 *CONSTANCIA FISCAL:* [RFC] [IDCIF] 9
+• Ejemplo: \`ROMA010203A12 12345678 9\`
+
+🪪 *RFC / CURP CLON:* [DATO] CLON
+• Ejemplo RFC: \`ROMA010203HTC CLON\`
+• Ejemplo CURP: \`ROMA010203HTCMNX00 CLON\`
+
+📝 *OTROS:*
+• \`.receta [Datos]\`
+• \`.cescolar [Datos]\`
+• \`.cmedico [Datos]\``;
+            return await responder(menuCmd);
+        }
+
+        if (textoMensaje.toLowerCase().startsWith('/corte') && tienePermisoOperativo) {
+            let targetGroup = chatId;
+            if (!esGrupo) {
+                const args = textoMensaje.split(' ').filter(a => a.trim() !== "");
+                if (args.length < 2) return await responder('⚠️ En chat privado, debes especificar el alias del grupo: `/corte [alias]`');
+                const alias = args[1].toLowerCase();
+                targetGroup = configSistema.gruposDestino[alias];
+                if (!targetGroup) return await responder(`⚠️ El alias *${alias}* no existe.`);
+            } else if (!esGrupoAutorizado) return;
+
+            let ganancia = configSistema.corte?.[targetGroup]?.ganancia || 0;
+            let tramites = configSistema.corte?.[targetGroup]?.tramites || 0;
+            await responder(`📊 *CORTE DE CAJA* 📊\n\n📄 Trámites procesados: *${tramites}*\n💰 Total ingresado/cobrado: *$${ganancia}.00 MXN*\n\n*(Usa /clearcorte para reiniciar)*`);
+            return;
+        }
+
+        if (textoMensaje.toLowerCase().startsWith('/clearcorte') && tienePermisoOperativo) {
+            let targetGroup = chatId;
+            if (!esGrupo) {
+                const args = textoMensaje.split(' ').filter(a => a.trim() !== "");
+                if (args.length < 2) return await responder('⚠️ En chat privado, debes especificar el alias: `/clearcorte [alias]`');
+                const alias = args[1].toLowerCase();
+                targetGroup = configSistema.gruposDestino[alias];
+                if (!targetGroup) return await responder(`⚠️ El alias *${alias}* no existe.`);
+            } else if (!esGrupoAutorizado) return;
+
+            if (!configSistema.corte) configSistema.corte = {};
+            configSistema.corte[targetGroup] = { ganancia: 0, tramites: 0 };
+            guardarConfig(configSistema);
+            await responder(`✅ *Corte de caja reiniciado a $0.00.*`);
+            return;
+        }
+
+        if (textoMensaje.toLowerCase() === '/renapo off' && tienePermisoOperativo && esGrupo) {
+            configSistema.renapoActivo = false;
+            guardarConfig(configSistema);
+            return await responder('🛑 *SISTEMA CAÍDO ACTIVADO*\nLos pedidos de actas están bloqueados temporalmente.');
+        }
+
+        if (textoMensaje.toLowerCase() === '/renapo on' && tienePermisoOperativo && esGrupo) {
+            configSistema.renapoActivo = true;
+            guardarConfig(configSistema);
+            return await responder('✅ *SISTEMA RESTABLECIDO*\nEl sistema de actas nacional vuelve a operar con normalidad.');
+        }
         
         if (textoMensaje.toLowerCase().startsWith('.n ') && tienePermisoOperativo && esGrupo) {
             const anuncio = textoMensaje.slice(3).trim();
@@ -300,21 +401,25 @@ async function iniciarBot() {
         }
 
         if (textoMensaje.toLowerCase() === '.ver' && tienePermisoOperativo) {
-            const quoted = msg.message.extendedTextMessage?.contextInfo?.quotedMessage;
-            if (!quoted) return await responder('⚠️ Cita la imagen de una sola vez con el comando `.ver`.');
-            const viewOnceMsg = quoted.viewOnceMessage?.message || quoted.viewOnceMessageV2?.message || quoted.viewOnceMessageV2Extension?.message;
-            if (viewOnceMsg) {
+            const quotedMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+            if (!quotedMsg) return await responder('⚠️ Cita la imagen o video de "1 sola vez".');
+            
+            let viewOnce = quotedMsg.viewOnceMessage?.message || quotedMsg.viewOnceMessageV2?.message || quotedMsg.viewOnceMessageV2Extension?.message;
+            if (viewOnce) {
                 try {
-                    const mediaMsg = viewOnceMsg.imageMessage || viewOnceMsg.videoMessage;
-                    if (!mediaMsg) return await responder('⚠️ No detecté un archivo válido.');
-                    const mediaType = viewOnceMsg.imageMessage ? 'image' : 'video';
+                    const mediaType = viewOnce.imageMessage ? 'image' : (viewOnce.videoMessage ? 'video' : null);
+                    if (!mediaType) return await responder('⚠️ Solo puedo revelar fotos o videos.');
+                    const mediaMsg = viewOnce[mediaType + 'Message'];
                     const stream = await downloadContentFromMessage(mediaMsg, mediaType);
                     let buffer = Buffer.from([]);
                     for await(const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
-                    if (mediaType === 'image') await sock.sendMessage(chatId, { image: buffer, caption: '📸 *Recuperado*' }, { quoted: msg });
-                    else await sock.sendMessage(chatId, { video: buffer, caption: '🎥 *Recuperado*' }, { quoted: msg });
-                } catch (e) { await responder(`⚠️ Error: ${e.message}`); }
-            } else await responder('⚠️ El mensaje citado no es de 1 sola vez.');
+                    
+                    if (mediaType === 'image') await sock.sendMessage(chatId, { image: buffer, caption: '📸 *Revelado por Naevis*' }, { quoted: msg });
+                    else await sock.sendMessage(chatId, { video: buffer, caption: '🎥 *Revelado por Naevis*' }, { quoted: msg });
+                } catch (e) { await responder(`⚠️ Error al descargar: ${e.message}`); }
+            } else {
+                await responder('⚠️ El mensaje que citaste no es un archivo de "1 sola vez".');
+            }
             return;
         }
 
@@ -323,46 +428,93 @@ async function iniciarBot() {
 ¡Hola! Aquí tienes la explicación de todos los comandos disponibles:
 
 👑 *SÚPER ADMINS (Propietarios)*
-• \`/mantenimiento\` ó \`/apagado\` : Apaga el bot (Avisa a los grupos).
-• \`/prendido\` : Enciende el bot nuevamente.
-• \`/addvendedor [@user]\` : Etiqueta a alguien para darle permisos de administrador del bot.
-• \`/delvendedor [@user]\` : Quita los permisos de vendedor.
+• \`/mantenimiento\` ó \`/apagado\` : Apaga el bot.
+• \`/prendido\` : Enciende el bot.
+• \`/addvendedor [@user]\` : Da permisos de admin.
+• \`/delvendedor [@user]\` : Quita permisos.
+• \`/corte [alias]\` y \`/clearcorte [alias]\` : Sistema de caja.
+• \`/renapo off\` / \`/renapo on\` : Activa o apaga el aviso de sistema caído para las actas.
 
 ⚙️ *GESTIÓN DE GRUPOS*
-• \`/activargrupo\` : Activa el bot en el grupo actual.
-• \`/desactivargrupo\` : Apaga el bot en el grupo actual.
-• \`/setgrupo [alias]\` : Le asigna un nombre corto a tu grupo de ventas.
-• \`/setproveedor [alias]\` : Enlaza a tu proveedor con el grupo de ventas.
+• \`/activargrupo\` y \`/desactivargrupo\`
+• \`/setgrupo [alias]\` y \`/setproveedor [alias]\`
 • \`.abrir\` / \`.cerrar\` : Abre o cierra el grupo.
 
-🤖 *AUTOMATIZACIÓN Y LEALTAD*
-• \`/auto\` / \`/offauto\` : Activa o apaga el modo automático.
-• \`/lealtad on\` / \`/lealtad off\` : Activa o apaga el sistema de recompensas.
+🤖 *AUTOMATIZACIÓN*
+• \`/auto\` / \`/offauto\`
+• \`/lealtad on\` / \`/lealtad off\`
 
-💳 *CLIENTES VIP (CRÉDITO)*
-• \`/vip [@user]\` / \`/delvip [@user]\` : Gestiona usuarios VIP.
-• \`.vips\` : Muestra clientes VIP.
-• \`/liquidado [@user]\` : Pone la deuda en ceros.
-• \`.deudores\` / \`.deuda\` : Consulta de deudas.
+💳 *CLIENTES VIP (CRÉDITO LÍMITE 7)*
+• \`/vip [@user]\` / \`/delvip [@user]\`
+• \`.vips\` y \`.deudores\`
+• \`/liquidado [@user]\` : Liquida y resetea el contador.
 
 💰 *FINANZAS Y VENTAS*
 • \`/precio [servicio] [$$]\` : Cambia precios.
-• \`/saldo [@user] [$$]\` : Añade o resta saldo (ej. /saldo -15 @user).
-• \`/priv [$$] [@user]\` : Registra venta por privado y descuenta saldo (si queda negativo, se vuelve deuda).
+• \`/saldo [@user] [$$]\` : Suma o resta (ej: /saldo -15 @user)
+• \`/priv [$$] [@user]\` : Cobra por privado (saldo/deuda)
 • \`.saldos\` : Muestra saldos.
-• \`/r [alias] [@user]\` : Reenvía entregas manualmente.
+• \`/r [alias] [@user]\` : Reenvía manual.
 
 │ 𝑁𝑎𝑒𝑣𝑖𝑠 𝐵𝑜𝑡
 │ Fecha: ${new Date().toLocaleString('es-MX', { timeZone: 'America/Monterrey' })} (MX)`;
-            
             const fakeQuote = { key: { fromMe: false, participant: '0@s.whatsapp.net', id: '1234567890123456' }, message: { locationMessage: { name: 'WhatsApp ✅', address: '🤖 MANUAL DEL SISTEMA' } } };
             await sock.sendMessage(chatId, { text: menu }, { quoted: fakeQuote });
             return;
         }
 
+        if (textoMensaje.toLowerCase().startsWith('/addvendedor') && deMiNumero) {
+            let targetUser = extraerIdCitado();
+            const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
+            if (!targetUser && mentioned && mentioned.length > 0) targetUser = toViejo(mentioned[0]);
+            
+            let content = textoMensaje.toLowerCase().replace('/addvendedor', '');
+            if (!targetUser) {
+                let phoneMatch = content.match(/52\d{10,11}/);
+                if (phoneMatch) targetUser = `${phoneMatch[0]}@c.us`;
+            }
+
+            if (!targetUser) return await responder('⚠️ Etiqueta o cita al usuario.');
+            if (!configSistema.vendedores) configSistema.vendedores = [];
+            if (!configSistema.vendedores.includes(targetUser)) {
+                configSistema.vendedores.push(targetUser);
+                guardarConfig(configSistema);
+                await responder(`✅ *Vendedor Registrado!*\nEse usuario ya puede operar a Naevis.`);
+            } else { await responder(`⚠️ Ese usuario ya es vendedor.`); }
+            return;
+        }
+
+        if (textoMensaje.toLowerCase().startsWith('/delvendedor') && deMiNumero) {
+            let targetUser = extraerIdCitado();
+            const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
+            if (!targetUser && mentioned && mentioned.length > 0) targetUser = toViejo(mentioned[0]);
+            
+            let content = textoMensaje.toLowerCase().replace('/delvendedor', '');
+            if (!targetUser) {
+                let phoneMatch = content.match(/52\d{10,11}/);
+                if (phoneMatch) targetUser = `${phoneMatch[0]}@c.us`;
+            }
+
+            if (!targetUser) return await responder('⚠️ Etiqueta o cita al usuario.');
+            if (configSistema.vendedores) {
+                configSistema.vendedores = configSistema.vendedores.filter(id => id !== targetUser);
+                guardarConfig(configSistema);
+                await responder(`❌ *Vendedor Eliminado!*`);
+            }
+            return;
+        }
+
         if (textoMensaje.toLowerCase().startsWith('/vip') && tienePermisoOperativo && esGrupo) {
             let targetUser = extraerIdCitado();
-            if (!targetUser) { const args = textoMensaje.split(' '); if (args[1]) targetUser = args[1].includes('@') ? args[1] : `${args[1]}@c.us`; }
+            const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
+            if (!targetUser && mentioned && mentioned.length > 0) targetUser = toViejo(mentioned[0]);
+
+            if (!targetUser) {
+                let content = textoMensaje.toLowerCase().replace('/vip', '');
+                let phoneMatch = content.match(/52\d{10,11}/);
+                if (phoneMatch) targetUser = `${phoneMatch[0]}@c.us`;
+            }
+
             if (!targetUser) return await responder('⚠️ Etiqueta o cita al usuario que será VIP.');
 
             if (!configSistema.vips) configSistema.vips = {};
@@ -372,7 +524,7 @@ async function iniciarBot() {
             if (indice === -1) {
                 configSistema.vips[chatId].push(targetUser);
                 guardarConfig(configSistema);
-                await sock.sendMessage(chatId, { text: `✅ @${targetUser.split('@')[0]} ahora es VIP.`, mentions: [toBaileys(targetUser)] });
+                await sock.sendMessage(chatId, { text: `✅ @${targetUser.split('@')[0]} ahora es VIP.\nSu límite de crédito es de *7 actas* antes de tener que liquidar.`, mentions: [toBaileys(targetUser)] });
             } else {
                 await sock.sendMessage(chatId, { text: `⚠️ @${targetUser.split('@')[0]} ya tenía el permiso VIP activo.`, mentions: [toBaileys(targetUser)] });
             }
@@ -381,7 +533,15 @@ async function iniciarBot() {
 
         if (textoMensaje.toLowerCase().startsWith('/delvip') && tienePermisoOperativo && esGrupo) {
             let targetUser = extraerIdCitado();
-            if (!targetUser) { const args = textoMensaje.split(' '); if (args[1]) targetUser = args[1].includes('@') ? args[1] : `${args[1]}@c.us`; }
+            const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
+            if (!targetUser && mentioned && mentioned.length > 0) targetUser = toViejo(mentioned[0]);
+
+            if (!targetUser) {
+                let content = textoMensaje.toLowerCase().replace('/delvip', '');
+                let phoneMatch = content.match(/52\d{10,11}/);
+                if (phoneMatch) targetUser = `${phoneMatch[0]}@c.us`;
+            }
+
             if (!targetUser) return await responder('⚠️ Etiqueta o cita al usuario.');
 
             if (!configSistema.vips) configSistema.vips = {};
@@ -416,7 +576,15 @@ async function iniciarBot() {
 
         if (textoMensaje.toLowerCase().startsWith('/liquidado') && tienePermisoOperativo && esGrupo) {
             let targetUser = extraerIdCitado();
-            if (!targetUser) { const args = textoMensaje.split(' '); if (args[1]) targetUser = args[1].includes('@') ? args[1] : `${args[1]}@c.us`; }
+            const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
+            if (!targetUser && mentioned && mentioned.length > 0) targetUser = toViejo(mentioned[0]);
+
+            if (!targetUser) {
+                let content = textoMensaje.toLowerCase().replace('/liquidado', '');
+                let phoneMatch = content.match(/52\d{10,11}/);
+                if (phoneMatch) targetUser = `${phoneMatch[0]}@c.us`;
+            }
+
             if (!targetUser) return await responder('⚠️ Etiqueta o cita al usuario.');
 
             if (!configSistema.deudas) configSistema.deudas = {};
@@ -424,9 +592,14 @@ async function iniciarBot() {
             
             const deudaActual = configSistema.deudas[chatId][targetUser] || 0;
             configSistema.deudas[chatId][targetUser] = 0;
+
+            if (!configSistema.deudasCantidad) configSistema.deudasCantidad = {};
+            if (!configSistema.deudasCantidad[chatId]) configSistema.deudasCantidad[chatId] = {};
+            configSistema.deudasCantidad[chatId][targetUser] = 0;
+
             guardarConfig(configSistema);
             
-            await sock.sendMessage(chatId, { text: `✅ *DEUDA LIQUIDADA*\nSe han perdonado *$${deudaActual}.00 MXN* a @${targetUser.split('@')[0]}.`, mentions: [toBaileys(targetUser)] });
+            await sock.sendMessage(chatId, { text: `✅ *DEUDA LIQUIDADA*\nSe han perdonado *$${deudaActual}.00 MXN* a @${targetUser.split('@')[0]}.\nContador de trámites VIP reiniciado a 0.`, mentions: [toBaileys(targetUser)] });
             return;
         }
 
@@ -439,7 +612,8 @@ async function iniciarBot() {
             for (const [usuario, deuda] of Object.entries(deudasDelGrupo)) {
                 if (deuda > 0) {
                     const numeroPuro = usuario.split('@')[0];
-                    listaDeudores += `👤 @${numeroPuro}:\n💰 Debe: *$${deuda}.00 MXN*\n\n`; 
+                    const actasDeudadas = configSistema.deudasCantidad?.[chatId]?.[usuario] || 0;
+                    listaDeudores += `👤 @${numeroPuro}:\n💰 Debe: *$${deuda}.00 MXN* (${actasDeudadas}/7)\n\n`; 
                     mencionesDeudores.push(toBaileys(usuario));
                     hayDeudas = true; 
                 }
@@ -452,8 +626,10 @@ async function iniciarBot() {
         if (textoMensaje.toLowerCase() === '.deuda') {
             if (esGrupo && !esGrupoAutorizado) return;
             const miDeuda = configSistema.deudas?.[chatId]?.[senderViejo] || 0;
+            const misDocDeudados = configSistema.deudasCantidad?.[chatId]?.[senderViejo] || 0;
+            
             if (miDeuda > 0) {
-                await responder(`💸 *Tu Deuda VIP Actual:* $${miDeuda}.00 MXN`);
+                await responder(`💸 *Tu Deuda VIP Actual:* $${miDeuda}.00 MXN\n📄 *Trámites pedidos:* ${misDocDeudados}/7\n⚠️ Recuerda liquidar antes de llegar al límite.`);
             } else {
                 await responder(`✅ No tienes ninguna deuda pendiente.`);
             }
@@ -558,10 +734,11 @@ async function iniciarBot() {
             return;
         }
 
-        // ==========================================
-        // COMANDO SALDO (Suma o resta directa blindada)
-        // ==========================================
-        if (textoMensaje.toLowerCase().startsWith('/saldo') && esGrupo && tienePermisoOperativo) {
+        if (textoMensaje.toLowerCase().startsWith('/saldo') && tienePermisoOperativo) {
+            let targetGroup = chatId;
+            
+            if (!esGrupo) return await responder('⚠️ Este comando es solo para usar dentro del grupo.');
+
             let targetUser = extraerIdCitado();
             const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
             if (mentioned && mentioned.length > 0) targetUser = toViejo(mentioned[0]);
@@ -587,28 +764,25 @@ async function iniciarBot() {
             if (isNegative) montoPesos = -Math.abs(montoPesos);
 
             if (targetUser && montoPesos !== 0) {
-                if (!saldosUsuarios[chatId]) saldosUsuarios[chatId] = {};
-                if (!saldosUsuarios[chatId][targetUser]) saldosUsuarios[chatId][targetUser] = 0;
+                if (!saldosUsuarios[targetGroup]) saldosUsuarios[targetGroup] = {};
+                if (!saldosUsuarios[targetGroup][targetUser]) saldosUsuarios[targetGroup][targetUser] = 0;
                 
-                saldosUsuarios[chatId][targetUser] += montoPesos;
-                if (saldosUsuarios[chatId][targetUser] < 0) saldosUsuarios[chatId][targetUser] = 0;
+                saldosUsuarios[targetGroup][targetUser] += montoPesos;
+                if (saldosUsuarios[targetGroup][targetUser] < 0) saldosUsuarios[targetGroup][targetUser] = 0;
 
                 const numPuro = targetUser.split('@')[0]; let base = numPuro;
                 if (numPuro.startsWith('521')) base = numPuro.substring(3); else if (numPuro.startsWith('52')) base = numPuro.substring(2);
-                saldosUsuarios[chatId][`521${base}@c.us`] = saldosUsuarios[chatId][targetUser];
-                saldosUsuarios[chatId][`52${base}@c.us`] = saldosUsuarios[chatId][targetUser];
+                saldosUsuarios[targetGroup][`521${base}@c.us`] = saldosUsuarios[targetGroup][targetUser];
+                saldosUsuarios[targetGroup][`52${base}@c.us`] = saldosUsuarios[targetGroup][targetUser];
 
                 guardarSaldos(saldosUsuarios);
-                await responder(`✅ *Saldo Actualizado*\n👤 *Usuario:* @${targetUser.split('@')[0]}\n💰 *Cambio:* ${montoPesos > 0 ? '+' : ''}${montoPesos}.00\n🔋 *Disponible:* $${saldosUsuarios[chatId][targetUser]}.00`);
+                await responder(`✅ *Saldo Actualizado*\n👤 *Usuario:* @${targetUser.split('@')[0]}\n💰 *Cambio:* ${montoPesos > 0 ? '+' : ''}${montoPesos}.00\n🔋 *Disponible:* $${saldosUsuarios[targetGroup][targetUser]}.00`);
             } else {
                 await responder(`⚠️ Uso correcto: \`/saldo [monto] [@usuario]\` o \`/saldo -[monto] [@usuario]\``);
             }
             return;
         }
 
-        // ==========================================
-        // COMANDO PRIVADO (/priv) - Descuenta saldo, el sobrante se vuelve deuda VIP
-        // ==========================================
         if (textoMensaje.toLowerCase().startsWith('/priv') && esGrupo && tienePermisoOperativo) {
             let targetUser = extraerIdCitado();
             const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
@@ -639,7 +813,6 @@ async function iniciarBot() {
                 let fueADeuda = false;
                 let nuevaDeuda = 0;
 
-                // Si queda en números rojos, lo cortamos a 0 y la diferencia se clava en Deudas
                 if (saldosUsuarios[chatId][targetUser] < 0) {
                     let deficit = Math.abs(saldosUsuarios[chatId][targetUser]);
                     saldosUsuarios[chatId][targetUser] = 0; 
@@ -651,6 +824,12 @@ async function iniciarBot() {
                     fueADeuda = true;
                     nuevaDeuda = configSistema.deudas[chatId][targetUser];
                 }
+
+                if (!configSistema.corte) configSistema.corte = {};
+                if (!configSistema.corte[chatId]) configSistema.corte[chatId] = { ganancia: 0, tramites: 0 };
+                configSistema.corte[chatId].ganancia += montoDescontar;
+                configSistema.corte[chatId].tramites += 1;
+                guardarConfig(configSistema);
 
                 const numPuro = targetUser.split('@')[0]; let base = numPuro;
                 if (numPuro.startsWith('521')) base = numPuro.substring(3); else if (numPuro.startsWith('52')) base = numPuro.substring(2);
@@ -699,7 +878,7 @@ async function iniciarBot() {
         if (textoMensaje.toLowerCase() === '.stock') { if (esGrupo && !esGrupoAutorizado) return; await responder(configSistema.stockGrupos[chatId] || 'ℹ️ Sin stock configurado.'); return; }
 
         if (textoMensaje.startsWith('.') || textoMensaje.startsWith('/')) {
-            // Permitir que los administradores fallen comandos sin bloquear
+            // Permitir fallos de comandos admin sin bloquear
         } else if (esGrupo && !esGrupoAutorizado) {
             return;
         }
@@ -708,7 +887,7 @@ async function iniciarBot() {
             const lineas = textoMensaje.split('\n').map(l => l.trim()).filter(l => l !== "");
             const regexActas = /^([A-Z]{4}\d{6}[A-Z]{6}[A-Z0-9]\d)\s([5-8]|NF|MF|DF|D0)$/i;
             const regexSat = /^([A-Z&Ññ]{3,4}\d{6}[A-Z0-9]{3})\s([A-Z0-9]+)\s(9)$/i;
-            const regexRfcClon = /^([A-Z&Ññ]{3,4}\d{6}[A-Z0-9]{3})\s(1)$/i;
+            const regexRfcClon = /^([A-Z0-9]{13,18})\s(CLON|1)$/i;
             
             let tramitesAProcesar = [];
             let p = configSistema.precios?.[chatId] || PRECIOS_BASE;
@@ -732,16 +911,24 @@ async function iniciarBot() {
                 } else if (matchSat) {
                     tramitesAProcesar.push({ identificador: `RFC: ${matchSat[1].toUpperCase()}`, codigo: matchSat[3], costo: p.sat, nombreServicio: "Constancia Fiscal", lineaOriginal: linea });
                 } else if (matchRfcClon) {
-                    tramitesAProcesar.push({ identificador: `RFC CLON: ${matchRfcClon[1].toUpperCase()}`, codigo: matchRfcClon[2], costo: p.rfcclon, nombreServicio: "RFC Clon", lineaOriginal: linea });
+                    let esCurp = matchRfcClon[1].length >= 18;
+                    let nombreSrv = esCurp ? "CURP Clon" : "RFC Clon";
+                    tramitesAProcesar.push({ identificador: `${esCurp ? 'CURP' : 'RFC'} CLON: ${matchRfcClon[1].toUpperCase()}`, codigo: matchRfcClon[2].toUpperCase(), costo: p.rfcclon, nombreServicio: nombreSrv, lineaOriginal: linea });
                 }
             }
 
             if (tramitesAProcesar.length > 0) {
+                
+                let contieneActas = tramitesAProcesar.some(t => t.nombreServicio.includes('Acta'));
+                if (contieneActas && configSistema.renapoActivo === false) {
+                    return await responder('⚠️ *SISTEMA NACIONAL EN MANTENIMIENTO* 🛑\nPor el momento no podemos procesar actas de RENAPO. Retomaremos pedidos en cuanto se restablezca.');
+                }
+
                 let saldoDisponible = saldosUsuarios[chatId]?.[senderViejo] || 0;
                 let esVip = configSistema.vips?.[chatId]?.includes(senderViejo) || false;
                 let miDeuda = configSistema.deudas?.[chatId]?.[senderViejo] || 0;
+                let misDocDeudados = configSistema.deudasCantidad?.[chatId]?.[senderViejo] || 0;
 
-                // SI TIENE CERO O MENOS, LO BLOQUEAMOS DIRECTO ANTES DE ITERAR
                 if (saldoDisponible <= 0 && !esVip) return await responder(`⚠️ *AVISO* ⚠️\nNo cuentas con saldo suficiente para tramitar.`);
 
                 let aliasDelGrupo = "SIN ALIAS";
@@ -753,6 +940,12 @@ async function iniciarBot() {
                 for (const tramite of tramitesAProcesar) {
                     if (saldoDisponible >= tramite.costo) {
                         saldoDisponible -= tramite.costo; exitosos.push(tramite);
+                        
+                        if (!configSistema.corte) configSistema.corte = {};
+                        if (!configSistema.corte[chatId]) configSistema.corte[chatId] = { ganancia: 0, tramites: 0 };
+                        configSistema.corte[chatId].ganancia += tramite.costo;
+                        configSistema.corte[chatId].tramites += 1;
+                        
                         const alerta = `🔔 *TRÁMITE SOLICITADO*\n👤 *ID:* \`${senderViejo}\`\n🏷️ *Grupo:* \`${aliasDelGrupo}\`\n🔑 *Trámite:* ${tramite.identificador} (${tramite.nombreServicio})\n🔋 *Saldo restante:* $${saldoDisponible}.00`;
                         
                         let destinatarios = new Set([...SÚPER_ADMINS_NATOS]);
@@ -760,7 +953,7 @@ async function iniciarBot() {
                         for (const destId of destinatarios) { try { await sock.sendMessage(toBaileys(destId), { text: alerta }); } catch (err) {} }
 
                         if (configSistema.autoMode && configSistema.autoMode[chatId]) {
-                            if (configSistema.gruposProveedores && configSistema.gruposProveedores[chatId] && tramite.nombreServicio.startsWith('Acta')) {
+                            if (configSistema.gruposProveedores && configSistema.gruposProveedores[chatId] && (tramite.nombreServicio.startsWith('Acta') || tramite.nombreServicio.includes('Clon'))) {
                                 try { 
                                     await sock.sendMessage(configSistema.gruposProveedores[chatId], { text: tramite.lineaOriginal }); 
                                     configSistema.pendientes[tramite.identificador] = { grupoVentas: chatId, cliente: senderViejo, costo: tramite.costo };
@@ -785,26 +978,38 @@ async function iniciarBot() {
                         }
 
                     } else if (esVip) {
-                        miDeuda += tramite.costo;
-                        tramite.fueCredito = true; 
-                        exitosos.push(tramite);
+                        if (misDocDeudados >= 7) {
+                            tramite.motivoRechazo = 'limite_vip';
+                            rechazados.push(tramite);
+                        } else {
+                            miDeuda += tramite.costo;
+                            misDocDeudados++;
+                            tramite.fueCredito = true; 
+                            exitosos.push(tramite);
 
-                        const alerta = `🔔 *TRÁMITE A CRÉDITO (VIP)*\n👤 *ID:* \`${senderViejo}\`\n🏷️ *Grupo:* \`${aliasDelGrupo}\`\n🔑 *Trámite:* ${tramite.identificador}\n💸 *Deuda acumulada:* $${miDeuda}.00`;
-                        
-                        let destinatarios = new Set([...SÚPER_ADMINS_NATOS]);
-                        if (configSistema.notificadoresGrupos[chatId]) configSistema.notificadoresGrupos[chatId].forEach(id => destinatarios.add(id));
-                        for (const destId of destinatarios) { try { await sock.sendMessage(toBaileys(destId), { text: alerta }); } catch (err) {} }
+                            if (!configSistema.corte) configSistema.corte = {};
+                            if (!configSistema.corte[chatId]) configSistema.corte[chatId] = { ganancia: 0, tramites: 0 };
+                            configSistema.corte[chatId].ganancia += tramite.costo;
+                            configSistema.corte[chatId].tramites += 1;
 
-                        if (configSistema.autoMode && configSistema.autoMode[chatId]) {
-                            if (configSistema.gruposProveedores && configSistema.gruposProveedores[chatId] && tramite.nombreServicio.startsWith('Acta')) {
-                                try { 
-                                    await sock.sendMessage(configSistema.gruposProveedores[chatId], { text: tramite.lineaOriginal }); 
-                                    configSistema.pendientes[tramite.identificador] = { grupoVentas: chatId, cliente: senderViejo, costo: tramite.costo };
-                                    guardarConfig(configSistema);
-                                } catch (err) {}
+                            const alerta = `🔔 *TRÁMITE A CRÉDITO (VIP)*\n👤 *ID:* \`${senderViejo}\`\n🏷️ *Grupo:* \`${aliasDelGrupo}\`\n🔑 *Trámite:* ${tramite.identificador}\n💸 *Deuda acumulada:* $${miDeuda}.00\n📄 *Trámites debidos:* ${misDocDeudados}/7`;
+                            
+                            let destinatarios = new Set([...SÚPER_ADMINS_NATOS]);
+                            if (configSistema.notificadoresGrupos[chatId]) configSistema.notificadoresGrupos[chatId].forEach(id => destinatarios.add(id));
+                            for (const destId of destinatarios) { try { await sock.sendMessage(toBaileys(destId), { text: alerta }); } catch (err) {} }
+
+                            if (configSistema.autoMode && configSistema.autoMode[chatId]) {
+                                if (configSistema.gruposProveedores && configSistema.gruposProveedores[chatId] && (tramite.nombreServicio.startsWith('Acta') || tramite.nombreServicio.includes('Clon'))) {
+                                    try { 
+                                        await sock.sendMessage(configSistema.gruposProveedores[chatId], { text: tramite.lineaOriginal }); 
+                                        configSistema.pendientes[tramite.identificador] = { grupoVentas: chatId, cliente: senderViejo, costo: tramite.costo };
+                                        guardarConfig(configSistema);
+                                    } catch (err) {}
+                                }
                             }
                         }
                     } else {
+                        tramite.motivoRechazo = 'sin_saldo';
                         rechazados.push(tramite);
                     }
                 }
@@ -813,6 +1018,11 @@ async function iniciarBot() {
                     if (!configSistema.deudas) configSistema.deudas = {};
                     if (!configSistema.deudas[chatId]) configSistema.deudas[chatId] = {};
                     configSistema.deudas[chatId][senderViejo] = miDeuda;
+
+                    if (!configSistema.deudasCantidad) configSistema.deudasCantidad = {};
+                    if (!configSistema.deudasCantidad[chatId]) configSistema.deudasCantidad[chatId] = {};
+                    configSistema.deudasCantidad[chatId][senderViejo] = misDocDeudados;
+
                     guardarConfig(configSistema);
                 }
 
@@ -823,7 +1033,14 @@ async function iniciarBot() {
                     }
                 }
                 
-                if (rechazados.length > 0) { textoConfirmacion += `\n❌ *Rechazados (Sin Saldo Suficiente)*\n`; }
+                if (rechazados.length > 0) { 
+                    let topeVip = rechazados.some(r => r.motivoRechazo === 'limite_vip');
+                    if (topeVip) {
+                        textoConfirmacion += `\n❌ *Rechazados (Límite VIP Alcanzado)*\n⚠️ Por favor liquida tu deuda VIP (${misDocDeudados}/7) para que no se te junte tanto y no se vuelva difícil de pagar.\n`;
+                    } else {
+                        textoConfirmacion += `\n❌ *Rechazados (Sin Saldo Suficiente)*\n`; 
+                    }
+                }
 
                 saldosUsuarios[chatId][senderViejo] = saldoDisponible; 
                 guardarSaldos(saldosUsuarios);
