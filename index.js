@@ -7,6 +7,7 @@ const http = require('http');
 const qrcode = require('qrcode-terminal');
 const { StoreDB } = require('./store-db');
 const { createShopHandler } = require('./shop-handler');
+const { createRentalHandler } = require('./rental-handler');
 
 process.on('unhandledRejection', (reason) => { console.log('⚠️ Error bloqueado:', reason); });
 
@@ -53,7 +54,9 @@ const toViejo = (id) => id ? id.replace('@s.whatsapp.net', '@c.us') : '';
 const tiendaDB = new StoreDB(path.join(CARPETA_DATOS, 'datos_tiendas', 'tiendas.sqlite'));
 const tiendas = createShopHandler({ store: tiendaDB, loadConfig: cargarConfig, saveConfig: guardarConfig,
     loadBalances: cargarSaldos, saveBalances: guardarSaldos, superAdmins: SÚPER_ADMINS_NATOS, download: downloadContentFromMessage });
+const rentas = createRentalHandler({ store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, saveConfig: guardarConfig });
 let colaMensajes = Promise.resolve();
+let relojRentas;
 
 async function iniciarBot() {
     const { state, saveCreds } = await useMultiFileAuthState(path.join(CARPETA_DATOS, 'sesion_naevis_final'));
@@ -77,10 +80,16 @@ async function iniciarBot() {
         }
 
         if (connection === 'close') {
+            clearInterval(relojRentas);
             const shouldReconnect = (new Boom(lastDisconnect.error))?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) iniciarBot();
         } else if (connection === 'open') {
             console.log('🚀 ¡MOTOR DESDE CERO EN LÍNEA!');
+            const revisarRentas = () => rentas.tick(sock).catch(e => console.error('Rentas:', e.message));
+            revisarRentas();
+            clearInterval(relojRentas);
+            relojRentas = setInterval(revisarRentas, 15000);
+            relojRentas.unref();
             tiendas.flushAudit(sock).catch(e => console.error('Avisos de tienda:', e.message));
         }
     });
@@ -89,7 +98,7 @@ async function iniciarBot() {
     sock.ev.on('group-participants.update', async (evento) => {
         let config = cargarConfig();
         const chatId = evento.id;
-        if (!config.gruposAutorizados.includes(chatId)) return;
+        if (!config.gruposAutorizados.includes(chatId) || !rentas.allowed(chatId)) return;
         
         if (evento.action === 'add') {
             for (const participante of evento.participants) {
@@ -104,7 +113,7 @@ async function iniciarBot() {
     sock.ev.on('groups.update', async (updates) => {
         let config = cargarConfig();
         for (const update of updates) {
-            if (!config.gruposAutorizados.includes(update.id)) continue;
+            if (!config.gruposAutorizados.includes(update.id) || !rentas.allowed(update.id)) continue;
             if (update.announce !== undefined) {
                 setTimeout(async () => {
                     try {
@@ -121,6 +130,7 @@ async function iniciarBot() {
         for (const msg of messages) colaMensajes = colaMensajes.then(async () => {
         if (!msg.message || msg.key.fromMe) return;
 
+        if (await rentas.handle(sock, msg)) return;
         if (await tiendas.handle(sock, msg)) return;
 
         const chatId = msg.key.remoteJid;
@@ -151,7 +161,7 @@ async function iniciarBot() {
                         const grupoVentas = datos.grupoVentas;
                         const cliente = datos.cliente;
 
-                        if (tiendaDB.shop(grupoVentas)?.mode !== 'tienda' && configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
+                        if (rentas.allowed(grupoVentas) && tiendaDB.shop(grupoVentas)?.mode !== 'tienda' && configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
                             const msgToForward = { key: msg.key, message: msg.message };
                             try {
                                 await sock.sendMessage(grupoVentas, { forward: msgToForward });
@@ -178,7 +188,7 @@ async function iniciarBot() {
                         const cliente = datos.cliente;
                         const costo = datos.costo;
 
-                        if (tiendaDB.shop(grupoVentas)?.mode !== 'tienda' && configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
+                        if (rentas.allowed(grupoVentas) && tiendaDB.shop(grupoVentas)?.mode !== 'tienda' && configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
                             try {
                                 let fuePorDeuda = false;
                                 if (configSistema.deudas && configSistema.deudas[grupoVentas] && configSistema.deudas[grupoVentas][cliente] >= costo) {
@@ -450,7 +460,7 @@ Envía tus datos con el siguiente formato (separado por un espacio):
 👑 *SÚPER ADMINS (Propietarios)*
 • \`/mantenimiento\` ó \`/apagado\` : Apaga el bot.
 • \`/prendido\` : Enciende el bot.
-• \`/addvendedor [@user]\` : Da permisos de admin.
+• \`/genkey 1 dia\` : Genera una renta (owner, privado).
 • \`/delvendedor [@user]\` : Quita permisos.
 • \`/corte [alias]\` y \`/clearcorte [alias]\` : Sistema de caja.
 • \`/renapo off\` / \`/renapo on\` : Activa o apaga el aviso de sistema caído para las actas.

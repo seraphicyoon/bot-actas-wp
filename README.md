@@ -54,7 +54,7 @@ Desde `/root/bot-actas-wp`, una vez publicados los cambios:
 
 ```bash
 git fetch origin main
-git restore --source=origin/main -- index.js store-db.js shop-handler.js README.md .gitignore
+git restore --source=origin/main -- index.js store-db.js shop-handler.js rental-handler.js README.md .gitignore
 npm install better-sqlite3@12.4.1 --save
 node --check index.js
 ```
@@ -64,3 +64,17 @@ Esto conserva `config.json`, `saldos.json` y la sesión existentes; añade SQLit
 ## Pruebas
 
 `npm test` cubre saldos, aislamiento, duplicados, reserva, reinicios, entrega privada, archivos, permisos y fallos de avisos con una conexión WhatsApp simulada. No inicia el bot ni manda mensajes reales.
+
+## Renta mediante keys (owner del bot)
+
+Solo los números de `SÚPER_ADMINS_NATOS` pueden administrar rentas, desde el privado con el bot. Los superadministradores delegados y vendedores no pueden generar keys. `/addvendedor` ya no activa rentas ni concede permisos globales.
+
+- `/genkey 1 dia`, `/genkey 12 horas`, `/genkey 7 dias`: genera una key de un uso. Duración entre 1 minuto y 366 días; el tiempo comienza al canjearla.
+- El arrendatario debe ser administrador del grupo de ventas y enviar `/activar KEY`. La key queda vinculada a ese cliente y grupo. Después usa `.actienda alias` o `.actram alias`.
+- `/suspender alias`: suspende inmediatamente ese grupo y su privado de stock aunque la owner haya sido expulsada. También admite el ID del grupo.
+- `/rentas`: muestra clientes, vencimientos y estados (fechas UTC).
+- `/revocarkey KEY`: invalida una key que todavía no se ha usado.
+
+Una nueva key renueva al mismo propietario: suma tiempo a una renta activa, o comienza desde ahora si estaba suspendida/vencida. Al vencer se bloquean las funciones de venta, administración y trámites de ese grupo. El stock, los saldos y el historial se conservan. Las tiendas propiedad de la owner del bot están exentas; los demás grupos existentes también necesitan activar una key al instalar esta versión.
+
+El bloqueo se verifica antes de cada mensaje. Los avisos automáticos se revisan cada 15 segundos mientras el bot esté conectado y al reconectar; si el VPS está apagado se notificará al regresar. Se envía al grupo de ventas y al privado vinculado: `🛑 TIENDA SUSPENDIDA\nEl tiempo de renta asignado por la owner ha finalizado.` Una suspensión manual indica que la owner suspendió el servicio. Si se perdió la conexión al enviar un aviso, este puede repetirse al reintentarlo.
