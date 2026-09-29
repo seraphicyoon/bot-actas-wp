@@ -1,0 +1,5 @@
+node_modules/
+sesion_naevis_final/
+datos_tiendas/
+*.log
+*.tar.gz

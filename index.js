@@ -5,6 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const qrcode = require('qrcode-terminal');
+const { StoreDB } = require('./store-db');
+const { createShopHandler } = require('./shop-handler');
 
 process.on('unhandledRejection', (reason) => { console.log('⚠️ Error bloqueado:', reason); });
 
@@ -19,7 +21,7 @@ const PATH_SALDOS = path.join(CARPETA_DATOS, 'saldos.json');
 const PATH_CONFIG = path.join(CARPETA_DATOS, 'config.json');
 
 function cargarSaldos() { try { if (fs.existsSync(PATH_SALDOS)) { const d = fs.readFileSync(PATH_SALDOS, 'utf8').trim(); return d === "" || d === "{}" ? {} : JSON.parse(d); } } catch (e) {} return {}; }
-function guardarSaldos(saldos) { try { fs.writeFileSync(PATH_SALDOS, JSON.stringify(saldos, null, 4), 'utf8'); } catch (e) {} }
+function guardarSaldos(saldos) { fs.writeFileSync(PATH_SALDOS, JSON.stringify(saldos, null, 4), 'utf8'); }
 
 function cargarConfig() {
     try {
@@ -43,10 +45,15 @@ function cargarConfig() {
     const init = { gruposAutorizados: [], vendedores: [], superAdmins: [], gruposDestino: {}, precios: {}, propietariosGrupos: {}, notificadoresGrupos: {}, stockGrupos: {}, pagosGrupos: {}, tramitesGrupos: {}, gruposProveedores: {}, pendientes: {}, autoMode: {}, comprasUsuarios: {}, loyaltyMode: {}, vips: {}, deudas: {}, deudasCantidad: {}, corte: {}, renapoActivo: true };
     fs.writeFileSync(PATH_CONFIG, JSON.stringify(init, null, 4), 'utf8'); return init;
 }
-function guardarConfig(config) { try { fs.writeFileSync(PATH_CONFIG, JSON.stringify(config, null, 4), 'utf8'); } catch (e) {} }
+function guardarConfig(config) { fs.writeFileSync(PATH_CONFIG, JSON.stringify(config, null, 4), 'utf8'); }
 
 const toBaileys = (id) => id ? id.replace('@c.us', '@s.whatsapp.net') : '';
 const toViejo = (id) => id ? id.replace('@s.whatsapp.net', '@c.us') : '';
+
+const tiendaDB = new StoreDB(path.join(CARPETA_DATOS, 'datos_tiendas', 'tiendas.sqlite'));
+const tiendas = createShopHandler({ store: tiendaDB, loadConfig: cargarConfig, saveConfig: guardarConfig,
+    loadBalances: cargarSaldos, saveBalances: guardarSaldos, superAdmins: SÚPER_ADMINS_NATOS, download: downloadContentFromMessage });
+let colaMensajes = Promise.resolve();
 
 async function iniciarBot() {
     const { state, saveCreds } = await useMultiFileAuthState(path.join(CARPETA_DATOS, 'sesion_naevis_final'));
@@ -74,6 +81,7 @@ async function iniciarBot() {
             if (shouldReconnect) iniciarBot();
         } else if (connection === 'open') {
             console.log('🚀 ¡MOTOR DESDE CERO EN LÍNEA!');
+            tiendas.flushAudit(sock).catch(e => console.error('Avisos de tienda:', e.message));
         }
     });
 
@@ -108,10 +116,12 @@ async function iniciarBot() {
         }
     });
 
-    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    sock.ev.on('messages.upsert', ({ messages, type }) => {
         if (type !== 'notify') return;
-        const msg = messages[0];
+        for (const msg of messages) colaMensajes = colaMensajes.then(async () => {
         if (!msg.message || msg.key.fromMe) return;
+
+        if (await tiendas.handle(sock, msg)) return;
 
         const chatId = msg.key.remoteJid;
         const esGrupo = chatId.endsWith('@g.us');
@@ -141,7 +151,7 @@ async function iniciarBot() {
                         const grupoVentas = datos.grupoVentas;
                         const cliente = datos.cliente;
 
-                        if (configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
+                        if (tiendaDB.shop(grupoVentas)?.mode !== 'tienda' && configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
                             const msgToForward = { key: msg.key, message: msg.message };
                             try {
                                 await sock.sendMessage(grupoVentas, { forward: msgToForward });
@@ -168,7 +178,7 @@ async function iniciarBot() {
                         const cliente = datos.cliente;
                         const costo = datos.costo;
 
-                        if (configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
+                        if (tiendaDB.shop(grupoVentas)?.mode !== 'tienda' && configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
                             try {
                                 let fuePorDeuda = false;
                                 if (configSistema.deudas && configSistema.deudas[grupoVentas] && configSistema.deudas[grupoVentas][cliente] >= costo) {
@@ -228,8 +238,8 @@ async function iniciarBot() {
             try {
                 const meta = await sock.groupMetadata(chatId);
                 participantesGrupo = meta.participants;
-                const yo = participantesGrupo.find(p => p.id === sock.user.id.split(':')[0] + '@s.whatsapp.net');
-                if (yo && (yo.admin === 'admin' || yo.admin === 'superadmin')) esAdminDelGrupo = true;
+                const autor = participantesGrupo.find(p => [p.id, p.phoneNumber, p.lid].some(id => toViejo(id) === senderViejo));
+                if (autor && (autor.admin === 'admin' || autor.admin === 'superadmin')) esAdminDelGrupo = true;
             } catch (e) {}
         }
 
@@ -1109,6 +1119,7 @@ Envía tus datos con el siguiente formato (separado por un espacio):
                 await responder(textoConfirmacion);
             }
         }
+        }).catch(e => console.error('Error procesando mensaje:', e.message));
     });
 }
 
