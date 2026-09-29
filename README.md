@@ -54,7 +54,7 @@ Desde `/root/bot-actas-wp`, una vez publicados los cambios:
 
 ```bash
 git fetch origin main
-git restore --source=origin/main -- index.js store-db.js shop-handler.js rental-handler.js README.md .gitignore
+git restore --source=origin/main -- index.js store-db.js shop-handler.js rental-handler.js moderation-handler.js README.md .gitignore
 npm install better-sqlite3@12.4.1 --save
 node --check index.js
 ```
@@ -78,3 +78,9 @@ Solo los números de `SÚPER_ADMINS_NATOS` pueden administrar rentas, desde el p
 Una nueva key renueva al mismo propietario: suma tiempo a una renta activa, o comienza desde ahora si estaba suspendida/vencida. Al vencer se bloquean las funciones de venta, administración y trámites de ese grupo. El stock, los saldos y el historial se conservan. Las tiendas propiedad de la owner del bot están exentas; los demás grupos existentes también necesitan activar una key al instalar esta versión.
 
 El bloqueo se verifica antes de cada mensaje. Los avisos automáticos se revisan cada 15 segundos mientras el bot esté conectado y al reconectar; si el VPS está apagado se notificará al regresar. Se envía al grupo de ventas y al privado vinculado: `🛑 TIENDA SUSPENDIDA\nEl tiempo de renta asignado por la owner ha finalizado.` Una suspensión manual indica que la owner suspendió el servicio. Si se perdió la conexión al enviar un aviso, este puede repetirse al reintentarlo.
+
+## Ayudantes y moderación
+
+En el grupo de ventas, el dueño responde al mensaje de un miembro con `.ayudante`. Ese miembro solo obtiene permisos para sumar saldo con `/s cantidad` respondiendo al cliente y expulsar miembros normales con `.kick`. No necesita ser administrador de WhatsApp. No puede restar saldo, administrar stock/pagos, nombrar ayudantes ni silenciar. `.quitarayudante` respondiendo al miembro revoca el rol; `.ayudantes` lista los ayudantes. Los permisos pertenecen exclusivamente a ese grupo, se guardan en SQLite y requieren que la renta esté activa.
+
+El dueño y los administradores normales pueden usar `.kick`, `.mute 10m`, `.mute 2h`, `.mute 1d` y `.unmute`, siempre respondiendo al miembro. `.mute` admite entre 1 minuto y 30 días (por defecto 10 minutos). El bot debe ser administrador para expulsar y eliminar mensajes. El silencio elimina cada nuevo mensaje mientras el bot está conectado; no impide físicamente enviar mensajes y no borra los mensajes enviados cuando el bot estuvo desconectado. Los vencimientos se conservan tras reiniciar. Se protegen el dueño, la owner del bot y los administradores del grupo.

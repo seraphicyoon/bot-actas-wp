@@ -6,7 +6,7 @@ const jid = id => id?.replace('@c.us','@s.whatsapp.net');
 const textOf = m => m?.conversation || m?.extendedTextMessage?.text || m?.documentMessage?.caption || m?.imageMessage?.caption || '';
 const unwrap = m => m?.ephemeralMessage?.message || m;
 
-function createShopHandler({ store, loadConfig, saveConfig, loadBalances, saveBalances, superAdmins, download }) {
+function createShopHandler({ store, loadConfig, saveConfig, loadBalances, saveBalances, superAdmins, download, isHelper = () => false }) {
     let flushing = false;
     async function flushAudit(sock) {
         if (flushing) return;
@@ -75,7 +75,8 @@ function createShopHandler({ store, loadConfig, saveConfig, loadBalances, saveBa
             // Read the sender's role, never the bot's role.
             if (activation || shop?.mode === 'tienda' || balanceAlias || paymentAlias) members = (await sock.groupMetadata(group)).participants;
             const member = members.find(p => canonical(p.id) === sender || canonical(p.phoneNumber) === sender || canonical(p.lid) === sender);
-            const groupAdmin = ['admin','superadmin'].includes(member?.admin);
+            const helper = isHelper(group,sender);
+            const groupAdmin = !helper && ['admin','superadmin'].includes(member?.admin);
             if (activation) {
                 const owner = shop?.owner || config.propietariosGrupos?.[group] || sender;
                 if (!(globalAdmin || (groupAdmin && config.gruposAutorizados.includes(group) && (!shop || owner===sender)))) throw Error('Solo el propietario autorizado o el superadministrador puede activar/cambiar este modo.');
@@ -115,7 +116,7 @@ function createShopHandler({ store, loadConfig, saveConfig, loadBalances, saveBa
                 if (shop && group !== shop.id) return true;
                 if (lower==='.saldo') { if(config.gruposAutorizados.includes(group)) await reply('🔋 Saldo: '+money(cents(loadBalances()[group]?.[sender] || 0,true))); return true; }
                 if (balanceAlias || paymentAlias) {
-                    if (!config.gruposAutorizados.includes(group) || !(globalAdmin || groupAdmin || config.propietariosGrupos?.[group]===sender)) throw Error('No tienes permiso para administrar este grupo.');
+                    if (!config.gruposAutorizados.includes(group) || !(globalAdmin || groupAdmin || config.propietariosGrupos?.[group]===sender || (helper && args[0].toLowerCase()==='/s'))) throw Error('No tienes permiso para administrar este grupo.');
                     if (paymentAlias) { const payment=text.slice(args[0].length).trim(); if(!payment) throw Error('Usa /setpago datos de pago.'); config.pagosGrupos[group]=payment; saveConfig(config); await reply('✅ Datos de pago guardados.'); return true; }
                     if (args.length!==2 || !message.extendedTextMessage?.contextInfo?.participant) throw Error('Usa /s 100 o -s 100 respondiendo al cliente.');
                     const customer=canonical(message.extendedTextMessage.contextInfo.participant);
@@ -136,13 +137,13 @@ function createShopHandler({ store, loadConfig, saveConfig, loadBalances, saveBa
             const requirePrivate = () => {requireAdmin(); if(!privateGroup) throw Error('Usa este comando en el grupo privado de stock.');};
             if (!config.gruposAutorizados.includes(shop.id)) return true;
             if (lower==='.ayudatienda' || lower==='.comandos' || lower==='.jinni') {
-                await reply('🛍️ TIENDA\n.stock — catálogo\n.comprar código — compra una unidad y recibe por privado\n.saldo — tu saldo\n.pago — datos para recargar\n\nADMINISTRACIÓN\n.actienda alias / .actram alias (grupo de ventas)\n/vincular alias (grupo privado del dueño)\n/producto código precio nombre\n/addstock código (respondiendo a una unidad)\n/inventario /verstock código /retirar ID\n/precio código precio\n/setpago datos\n/s cantidad y -s cantidad (respondiendo al cliente en ventas)\n/pedidos /resolver ID entregado|cancelar\n/reavisar (reintenta avisos al grupo privado)'); return true;
+                await reply('🛍️ TIENDA\n.stock — catálogo\n.comprar código — compra una unidad y recibe por privado\n.saldo — tu saldo\n.pago — datos para recargar\n\nADMINISTRACIÓN\n.ayudante / .quitarayudante (respondiendo al usuario)\n.ayudantes\n.kick / .mute 10m / .unmute (respondiendo al usuario)\n.actienda alias / .actram alias (grupo de ventas)\n/vincular alias (grupo privado del dueño)\n/producto código precio nombre\n/addstock código (respondiendo a una unidad)\n/inventario /verstock código /retirar ID\n/precio código precio\n/setpago datos\n/s cantidad y -s cantidad (respondiendo al cliente en ventas)\n/pedidos /resolver ID entregado|cancelar\n/reavisar (reintenta avisos al grupo privado)'); return true;
             }
             if (lower==='.saldo' || lower==='.versaldo') {await reply('🔋 Saldo en '+shop.alias+': '+money(store.balance(shop.id,sender))); return true;}
             if (lower==='.pago') {await reply(shop.payment || 'Sin datos de pago configurados.'); return true;}
             if (args[0].toLowerCase()==='/setpago') {requireAdmin();const payment=text.slice(args[0].length).trim();if(!payment || payment.length>8000) throw Error('Usa /setpago datos (máximo 8000 caracteres).'); store.db.prepare('UPDATE shops SET payment=? WHERE id=?').run(payment,shop.id); await reply('✅ Datos de pago guardados.');return true;}
             if (['/s','-s'].includes(args[0].toLowerCase())) {
-                requireAdmin(); if(privateGroup) throw Error('Responde al cliente en el grupo de ventas para ajustar su saldo.');
+                if (!(admin || (helper && args[0].toLowerCase()==='/s'))) requireAdmin(); if(privateGroup) throw Error('Responde al cliente en el grupo de ventas para ajustar su saldo.');
                 if(args.length!==2) throw Error('Usa /s 100 o -s 100 respondiendo al cliente.');
                 const customer=canonical(message.extendedTextMessage?.contextInfo?.participant);
                 if(!customer || !members.some(p=>[p.id,p.phoneNumber,p.lid].some(id=>canonical(id)===customer))) throw Error('Responde al mensaje de un cliente del grupo.');

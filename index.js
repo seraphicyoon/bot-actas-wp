@@ -8,6 +8,7 @@ const qrcode = require('qrcode-terminal');
 const { StoreDB } = require('./store-db');
 const { createShopHandler } = require('./shop-handler');
 const { createRentalHandler } = require('./rental-handler');
+const { createModerationHandler } = require('./moderation-handler');
 
 process.on('unhandledRejection', (reason) => { console.log('⚠️ Error bloqueado:', reason); });
 
@@ -52,8 +53,9 @@ const toBaileys = (id) => id ? id.replace('@c.us', '@s.whatsapp.net') : '';
 const toViejo = (id) => id ? id.replace('@s.whatsapp.net', '@c.us') : '';
 
 const tiendaDB = new StoreDB(path.join(CARPETA_DATOS, 'datos_tiendas', 'tiendas.sqlite'));
+const moderacion = createModerationHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig});
 const tiendas = createShopHandler({ store: tiendaDB, loadConfig: cargarConfig, saveConfig: guardarConfig,
-    loadBalances: cargarSaldos, saveBalances: guardarSaldos, superAdmins: SÚPER_ADMINS_NATOS, download: downloadContentFromMessage });
+    isHelper: moderacion.isHelper, loadBalances: cargarSaldos, saveBalances: guardarSaldos, superAdmins: SÚPER_ADMINS_NATOS, download: downloadContentFromMessage });
 const rentas = createRentalHandler({ store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, saveConfig: guardarConfig });
 let colaMensajes = Promise.resolve();
 let relojRentas;
@@ -131,6 +133,7 @@ async function iniciarBot() {
         if (!msg.message || msg.key.fromMe) return;
 
         if (await rentas.handle(sock, msg)) return;
+        if (await moderacion.handle(sock, msg)) return;
         if (await tiendas.handle(sock, msg)) return;
 
         const chatId = msg.key.remoteJid;
@@ -255,7 +258,7 @@ async function iniciarBot() {
 
         const deMiNumero = SÚPER_ADMINS_NATOS.includes(senderViejo) || configSistema.superAdmins?.includes(senderViejo);
         const esDuenioDelGrupo = esGrupo && configSistema.propietariosGrupos && configSistema.propietariosGrupos[chatId] === senderViejo;
-        const tienePermisoOperativo = deMiNumero || esDuenioDelGrupo || configSistema.vendedores?.includes(senderViejo) || esAdminDelGrupo;
+        const tienePermisoOperativo = deMiNumero || esDuenioDelGrupo || (!moderacion.isHelper(chatId,senderViejo) && (configSistema.vendedores?.includes(senderViejo) || esAdminDelGrupo));
         const esGrupoAutorizado = configSistema.gruposAutorizados.includes(chatId);
 
         // ==========================================
