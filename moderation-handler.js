@@ -31,11 +31,11 @@ function createModerationHandler({store,owners,loadConfig,now=Date.now}){
  const target=canonical(m?.extendedTextMessage?.contextInfo?.participant);if(!target||!find(target))throw Error('Responde al mensaje de una persona de este grupo.');
  if(cmd==='.ayudante'||cmd==='.quitarayudante'){
   if(!isOwner)throw Error('Solo el dueño de esta tienda puede nombrar o quitar ayudantes.');
-  if(cmd==='.ayudante'){if(protectedUser(target))throw Error('El dueño y los administradores ya tienen su propio rol.');db.prepare('INSERT OR IGNORE INTO helpers VALUES(?,?)').run(group,target);await reply('✅ *AYUDANTE ASIGNADO*\nPuede sumar saldo con /s cantidad y expulsar con .kick, respondiendo al usuario. Solo en este grupo.');}
+  if(cmd==='.ayudante'){if(protectedUser(target))throw Error('El dueño y los administradores ya tienen su propio rol.');db.prepare('INSERT OR IGNORE INTO helpers VALUES(?,?)').run(group,target);await reply('✅ *AYUDANTE ASIGNADO*\nPuede sumar saldo con /s cantidad y moderar con .kick, .mute y .unmute, respondiendo al usuario. Solo en este grupo.');}
   else{db.prepare('DELETE FROM helpers WHERE shop=? AND customer=?').run(group,target);await reply('✅ Permisos de ayudante retirados.');}return true;
  }
  const helper=isHelper(group,sender);
- if(!(isOwner||(!helper&&admin(author))||(cmd==='.kick'&&helper)))throw Error('No tienes permiso para usar este comando.');
+ if(!(isOwner||(!helper&&admin(author))||(['.kick','.mute','.unmute'].includes(cmd)&&helper)))throw Error('No tienes permiso para usar este comando.');
  if(protectedUser(target)||target===sender)throw Error('No puedes moderar al dueño, administradores ni a ti mismo.');
  const botId=canonical(sock.user?.id?.replace(/:\d+@/,'@'));
  if(!admin(find(botId)))throw Error('El bot debe ser administrador del grupo para expulsar o eliminar mensajes.');
