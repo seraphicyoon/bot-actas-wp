@@ -27,8 +27,8 @@ function createShopHandler({ store, loadConfig, saveConfig, loadBalances, saveBa
             }
         } finally { flushing = false; }
     }
-    function content(payload,media,summary) {
-        const body = summary + '\n\nContenido de la unidad:\n' + (payload.text || '');
+    function content(payload,media,summary,customerDelivery=false) {
+        const body = summary + (customerDelivery ? '\n\n📩 *TU PRODUCTO*\n' : '\n\n📩 *CONTENIDO ENTREGADO*\n') + (payload.text || '📎 Archivo adjunto') + (customerDelivery ? '\n\nGracias por tu compra 🤍' : '');
         if (payload.kind === 'image') return {image:media,caption:body};
         if (payload.kind === 'document') return {document:media,mimetype:payload.mimetype,fileName:payload.fileName,caption:body};
         return {text:body};
@@ -178,7 +178,7 @@ function createShopHandler({ store, loadConfig, saveConfig, loadBalances, saveBa
                 if(args.length!==2) throw Error('Usa .comprar código para comprar una unidad.');
                 const o=store.reserve(shop.id,sender,args[1].toLowerCase(),msg.key.id);
                 try {
-                    await sock.sendMessage(jid(sender),content(JSON.parse(o.payload),o.media,`📦 Pedido ${o.id}\nTienda: ${shop.alias}\nProducto: ${o.code}\nImporte: ${money(o.price)}`),{messageId:o.message_id});
+                    await sock.sendMessage(jid(sender),content(JSON.parse(o.payload),o.media,`🛍️ *ENTREGA DE TU COMPRA*\n\n🏪 *Tienda:* ${shop.alias}\n📦 *Producto:* ${o.code}\n💳 *Total pagado:* ${money(o.price)}\n💰 *Saldo restante:* ${money(store.balance(shop.id,sender))}\n\n🧾 *Referencia del pedido:*\n${o.id}`,true),{messageId:o.message_id});
                 } catch(e) {
                     // A thrown send can still have reached WhatsApp. Never refund/resell blindly.
                     store.settle(o.id,'review');await flushAudit(sock);
