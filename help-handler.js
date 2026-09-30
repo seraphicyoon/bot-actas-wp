@@ -64,6 +64,8 @@ Constancia fiscal: RFC IDCIF 9.
 RFC/CURP clon: DATO CLON.
 Los pedidos requieren proveedor y precios configurados. La entrega depende de ese proveedor.
 
+/nombre Nombre completo — solicitud de búsqueda MANUAL, cuesta $10 MXN de tu saldo. La owner recibe el aviso por privado; si rechaza se devuelve el cobro.
+
 *Administración de trámites: dueño/admin, no ayudantes*
 /setgrupo alias — registra alias del grupo.
 /setproveedor alias — desde el grupo proveedor vincula las ventas; solo el dueño de esas ventas/owner del bot.
@@ -85,6 +87,8 @@ Los pedidos requieren proveedor y precios configurados. La entrega depende de es
 /activargrupo y /desactivargrupo — activa/desactiva el grupo autorizado. No sustituyen la key de renta.
 Los comandos .receta, .cescolar y .cmedico no están implementados; no se anuncian como disponibles.`;
 const ownerGuide=`👑 *OWNER DEL BOT — PRIVADO*
+/r ID — responde al resultado para entregarlo al privado del cliente de una búsqueda /nombre.
+/rechazar — responde al aviso de búsqueda, o usa /rechazar ID; devuelve $10 una sola vez y avisa al cliente.
 /genkey 1 dia / /genkey 7 dias / /genkey 12 horas — key de un uso; de 1 minuto a 366 días.
 El cliente administrador escribe /activar KEY en ventas. El tiempo comienza ahí; luego .actienda alias o .actram alias.
 /rentas — grupos, clientes, estado y vencimiento UTC.

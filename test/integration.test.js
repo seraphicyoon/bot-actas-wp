@@ -11,6 +11,9 @@ async function setup(){const dir=fs.mkdtempSync(path.join(os.tmpdir(),'naevis-in
 test('actual routing: help, legacy balances, unknown commands, maintenance and resume',async()=>{const f=await setup();try{
  let out=await f.send('.jinni');assert.ok(out.some(m=>m.text?.includes('MODO TRÁMITES')));assert.ok(out.some(m=>m.text?.includes('OWNER DEL BOT')));
  out=await f.send('/s 12.34',f.owner,f.sales,'buyer@lid');assert.match(out[0].text,/12.34/);
+ out=await f.send('/nombre Nombre Completo','buyer');assert.ok(out.some(m=>m.text?.includes('Comenzando la busqueda')));
+ const search=vm.runInContext('tiendaDB.db.prepare("SELECT id FROM name_requests LIMIT 1").get()',f.sandbox);
+ out=await f.send('/rechazar '+search.id,f.owner,f.owner+'@s.whatsapp.net');assert.ok(out.some(m=>m.text?.includes('Se devolvieron $10')));
  out=await f.send('/saldos');assert.match(out[0].text,/SALDOS DEL GRUPO/);
  out=await f.send('.grupos');assert.match(out[0].text,/demo/);
  out=await f.send('/precio actas 12abc');assert.match(out[0].text,/entero positivo/);

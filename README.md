@@ -95,3 +95,11 @@ El dueño y los administradores normales pueden usar `.kick`, `.mute 10m`, `.mut
 La normalización de identificadores de WhatsApp y de mensajes envueltos se centraliza en `message-utils.js`; la ayuda y pausa persistente están en `help-handler.js`. Actualizar ambos junto a los manejadores y `index.js`.
 
 Las pruebas usan SQLite real y WhatsApp simulado. Incluyen el recorrido de mensajes de `index.js`, saldos con participantes LID, permisos de ayudantes, moderación, rentas, compra, stock y auditoría. No sustituyen una prueba conectada a WhatsApp ni verifican servicios externos de trámites.
+
+### Búsquedas manuales por nombre
+
+En un grupo autorizado en modo trámites, `/nombre Nombre completo` cobra $10 MXN del saldo disponible, registra la solicitud y avisa al privado de la owner principal del bot. No realiza búsquedas automáticas. El cliente recibe “Comenzando la busqueda... Espera un momento por favor...”.
+
+La owner responde al archivo, imagen o texto del resultado con `/r ID` (el ID aparece en el aviso). Se entrega al privado del cliente. El `/r alias` anterior sigue disponible para los demás trámites. Para rechazar, responder al aviso con `/rechazar` o enviar `/rechazar ID`: devuelve $10 una sola vez y avisa “Este usuario no esta permitido o aun no aparece en la database”. Se avisa al privado del cliente y al grupo de la solicitud.
+
+Solo la owner puede resolver estas solicitudes desde su privado. Los registros y el diario de cobros/devoluciones persisten en SQLite; los saldos de trámites permanecen en `saldos.json`. Las entregas inciertas quedan en revisión, sin reenvíos ni devoluciones automáticas. No se permite cambiar un grupo a tienda con búsquedas pendientes. Incluir `name-handler.js` al actualizar.

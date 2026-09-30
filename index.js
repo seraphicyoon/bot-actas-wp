@@ -11,6 +11,7 @@ const { createRentalHandler } = require('./rental-handler');
 const { createModerationHandler } = require('./moderation-handler');
 const { createHelpHandler } = require('./help-handler');
 const {normalizeMessage} = require('./message-utils');
+const {createNameHandler} = require('./name-handler');
 
 process.on('unhandledRejection', (reason) => { console.log('⚠️ Error bloqueado:', reason); });
 
@@ -25,7 +26,7 @@ const PATH_SALDOS = path.join(CARPETA_DATOS, 'saldos.json');
 const PATH_CONFIG = path.join(CARPETA_DATOS, 'config.json');
 
 function cargarSaldos() { try { if (fs.existsSync(PATH_SALDOS)) { const d = fs.readFileSync(PATH_SALDOS, 'utf8').trim(); return d === "" || d === "{}" ? {} : JSON.parse(d); } } catch (e) {} return {}; }
-function guardarSaldos(saldos) { fs.writeFileSync(PATH_SALDOS, JSON.stringify(saldos, null, 4), 'utf8'); }
+function guardarSaldos(saldos) { fs.writeFileSync(PATH_SALDOS + '.tmp', JSON.stringify(saldos, null, 4), 'utf8'); fs.renameSync(PATH_SALDOS + '.tmp', PATH_SALDOS); }
 
 function cargarConfig() {
     try {
@@ -60,6 +61,7 @@ const tiendas = createShopHandler({ store: tiendaDB, loadConfig: cargarConfig, s
     isHelper: moderacion.isHelper, loadBalances: cargarSaldos, saveBalances: guardarSaldos, superAdmins: SÚPER_ADMINS_NATOS, download: downloadContentFromMessage });
 const rentas = createRentalHandler({ store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, saveConfig: guardarConfig });
 const ayuda = createHelpHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig});
+const nombres = createNameHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, loadBalances: cargarSaldos, saveBalances: guardarSaldos, allowed: rentas.allowed});
 let colaMensajes = Promise.resolve();
 let relojRentas;
 
@@ -141,6 +143,7 @@ async function iniciarBot() {
         if (await rentas.handle(sock, msg)) return;
         if (await moderacion.handle(sock, msg)) return;
         if (await ayuda.handle(sock, msg)) return;
+        if (await nombres.handle(sock, msg)) return;
         if (await tiendas.handle(sock, msg)) return;
 
         const chatId = msg.key.remoteJid;
