@@ -1,6 +1,6 @@
 'use strict';
 const {randomBytes,createHash}=require('crypto');
-const canonical=id=>id?.replace('@s.whatsapp.net','@c.us');
+const {canonical} = require('./message-utils');
 const hash=key=>createHash('sha256').update(key).digest('hex');
 const EXPIRED='🛑 TIENDA SUSPENDIDA\nEl tiempo de renta asignado por la owner ha finalizado.';
 const MANUAL='🛑 TIENDA SUSPENDIDA\nLa owner ha suspendido el servicio de esta tienda.';

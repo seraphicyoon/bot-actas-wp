@@ -1,5 +1,5 @@
 'use strict';
-const canonical=id=>id?.replace('@s.whatsapp.net','@c.us');
+const {canonical} = require('./message-utils');
 function muteDuration(value='10m'){
  const m=value.toLowerCase().match(/^(\d+)(m|h|d)$/);if(!m)throw Error('Usa .mute 10m, .mute 2h o .mute 1d respondiendo al usuario.');
  const n=Number(m[1])*({m:60000,h:3600000,d:86400000}[m[2]]);if(!Number.isSafeInteger(n)||n<60000||n>30*86400000)throw Error('El tiempo debe ser de 1 minuto a 30 días.');return n;
@@ -24,7 +24,7 @@ function createModerationHandler({store,owners,loadConfig,now=Date.now}){
  const protectedUser=id=>id===owner||owners.includes(id)||admin(find(id));
  if(mute&&mute.expires>now()){
   if(protectedUser(sender)){db.prepare('DELETE FROM mutes WHERE shop=? AND customer=?').run(group,sender);}
-  else{await sock.sendMessage(group,{delete:msg.key});return true;}
+  else{await sock.sendMessage(group,{delete:msg.originalKey||msg.key});return true;}
  }else if(mute)db.prepare('DELETE FROM mutes WHERE shop=? AND customer=?').run(group,sender);
  if(!commands.includes(cmd))return false;
  if(cmd==='.ayudantes'){if(!isOwner)throw Error('Solo el dueño puede consultar los ayudantes.');const rows=db.prepare('SELECT customer FROM helpers WHERE shop=?').all(group);await reply(rows.length?'👥 *AYUDANTES*\n'+rows.map(r=>r.customer).join('\n'):'No hay ayudantes.');return true;}
@@ -37,9 +37,10 @@ function createModerationHandler({store,owners,loadConfig,now=Date.now}){
  const helper=isHelper(group,sender);
  if(!(isOwner||(!helper&&admin(author))||(['.kick','.mute','.unmute'].includes(cmd)&&helper)))throw Error('No tienes permiso para usar este comando.');
  if(protectedUser(target)||target===sender)throw Error('No puedes moderar al dueño, administradores ni a ti mismo.');
- const botId=canonical(sock.user?.id?.replace(/:\d+@/,'@'));
- if(!admin(find(botId)))throw Error('El bot debe ser administrador del grupo para expulsar o eliminar mensajes.');
- if(cmd==='.kick'){await sock.groupParticipantsUpdate(group,[find(target).id],'remove');db.prepare('DELETE FROM helpers WHERE shop=? AND customer=?').run(group,target);db.prepare('DELETE FROM mutes WHERE shop=? AND customer=?').run(group,target);await reply('🚪 Usuario expulsado del grupo.');return true;}
+ const botIds=[sock.user?.id,sock.user?.lid].map(canonical);
+ if(!botIds.some(id=>id && admin(find(id))))throw Error('El bot debe ser administrador del grupo para expulsar o eliminar mensajes.');
+ if(cmd==='.kick'){const results=await sock.groupParticipantsUpdate(group,[find(target).id],'remove');
+ if(results?.some(r=>r.status && String(r.status)!=='200'))throw Error('WhatsApp rechazó la expulsión; verifica permisos y que el miembro siga en el grupo.');db.prepare('DELETE FROM helpers WHERE shop=? AND customer=?').run(group,target);db.prepare('DELETE FROM mutes WHERE shop=? AND customer=?').run(group,target);await reply('🚪 Usuario expulsado del grupo.');return true;}
  if(cmd==='.unmute'){db.prepare('DELETE FROM mutes WHERE shop=? AND customer=?').run(group,target);await reply('🔊 Silencio retirado.');return true;}
  if(args.length>2)throw Error('Usa .mute 10m respondiendo al usuario.');const time=muteDuration(args[1]);
  db.prepare('INSERT INTO mutes VALUES(?,?,?) ON CONFLICT(shop,customer) DO UPDATE SET expires=excluded.expires').run(group,target,now()+time);

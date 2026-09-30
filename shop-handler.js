@@ -1,7 +1,7 @@
 'use strict';
 const { createHash } = require('crypto');
 const { cents, money } = require('./store-db');
-const canonical = id => id?.replace('@s.whatsapp.net','@c.us');
+const {canonical} = require('./message-utils');
 const jid = id => id?.replace('@c.us','@s.whatsapp.net');
 const textOf = m => m?.conversation || m?.extendedTextMessage?.text || m?.documentMessage?.caption || m?.imageMessage?.caption || '';
 const unwrap = m => m?.ephemeralMessage?.message || m;

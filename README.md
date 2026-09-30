@@ -84,3 +84,14 @@ El bloqueo se verifica antes de cada mensaje. Los avisos automáticos se revisan
 En el grupo de ventas, el dueño responde al mensaje de un miembro con `.ayudante`. Ese miembro solo obtiene permisos para sumar saldo con `/s cantidad` respondiendo al cliente y moderar miembros normales con `.kick`, `.mute` y `.unmute`. No necesita ser administrador de WhatsApp. No puede restar saldo, administrar stock/pagos, nombrar ayudantes. `.quitarayudante` respondiendo al miembro revoca el rol; `.ayudantes` lista los ayudantes. Los permisos pertenecen exclusivamente a ese grupo, se guardan en SQLite y requieren que la renta esté activa.
 
 El dueño y los administradores normales pueden usar `.kick`, `.mute 10m`, `.mute 2h`, `.mute 1d` y `.unmute`, siempre respondiendo al miembro. `.mute` admite entre 1 minuto y 30 días (por defecto 10 minutos). El bot debe ser administrador para expulsar y eliminar mensajes. El silencio elimina cada nuevo mensaje mientras el bot está conectado; no impide físicamente enviar mensajes y no borra los mensajes enviados cuando el bot estuvo desconectado. Los vencimientos se conservan tras reiniciar. Se protegen el dueño, la owner del bot y los administradores del grupo.
+
+
+### Revisión de comandos y ayuda
+
+`.jinni` muestra instrucciones de clientes, administración y el modo activo del grupo. La guía privada de la owner explica las rentas y el mantenimiento. `.ayudatienda` también abre la ayuda. Los comandos sin implementar no se anuncian como disponibles.
+
+`/apagado` o `/mantenimiento` (owner, privado) pausa la atención sin terminar el proceso. `/prendido` reanuda la atención. Si PM2 está detenido, debe iniciarse desde el VPS.
+
+La normalización de identificadores de WhatsApp y de mensajes envueltos se centraliza en `message-utils.js`; la ayuda y pausa persistente están en `help-handler.js`. Actualizar ambos junto a los manejadores y `index.js`.
+
+Las pruebas usan SQLite real y WhatsApp simulado. Incluyen el recorrido de mensajes de `index.js`, saldos con participantes LID, permisos de ayudantes, moderación, rentas, compra, stock y auditoría. No sustituyen una prueba conectada a WhatsApp ni verifican servicios externos de trámites.

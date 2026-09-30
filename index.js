@@ -9,6 +9,8 @@ const { StoreDB } = require('./store-db');
 const { createShopHandler } = require('./shop-handler');
 const { createRentalHandler } = require('./rental-handler');
 const { createModerationHandler } = require('./moderation-handler');
+const { createHelpHandler } = require('./help-handler');
+const {normalizeMessage} = require('./message-utils');
 
 process.on('unhandledRejection', (reason) => { console.log('⚠️ Error bloqueado:', reason); });
 
@@ -57,6 +59,7 @@ const moderacion = createModerationHandler({store: tiendaDB, owners: SÚPER_ADMI
 const tiendas = createShopHandler({ store: tiendaDB, loadConfig: cargarConfig, saveConfig: guardarConfig,
     isHelper: moderacion.isHelper, loadBalances: cargarSaldos, saveBalances: guardarSaldos, superAdmins: SÚPER_ADMINS_NATOS, download: downloadContentFromMessage });
 const rentas = createRentalHandler({ store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, saveConfig: guardarConfig });
+const ayuda = createHelpHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig});
 let colaMensajes = Promise.resolve();
 let relojRentas;
 
@@ -100,7 +103,7 @@ async function iniciarBot() {
     sock.ev.on('group-participants.update', async (evento) => {
         let config = cargarConfig();
         const chatId = evento.id;
-        if (!config.gruposAutorizados.includes(chatId) || !rentas.allowed(chatId)) return;
+        if (!config.gruposAutorizados.includes(chatId) || ayuda.paused() || !rentas.allowed(chatId)) return;
         
         if (evento.action === 'add') {
             for (const participante of evento.participants) {
@@ -115,7 +118,7 @@ async function iniciarBot() {
     sock.ev.on('groups.update', async (updates) => {
         let config = cargarConfig();
         for (const update of updates) {
-            if (!config.gruposAutorizados.includes(update.id) || !rentas.allowed(update.id)) continue;
+            if (!config.gruposAutorizados.includes(update.id) || ayuda.paused() || !rentas.allowed(update.id)) continue;
             if (update.announce !== undefined) {
                 setTimeout(async () => {
                     try {
@@ -129,11 +132,15 @@ async function iniciarBot() {
 
     sock.ev.on('messages.upsert', ({ messages, type }) => {
         if (type !== 'notify') return;
-        for (const msg of messages) colaMensajes = colaMensajes.then(async () => {
+        for (const rawMsg of messages) colaMensajes = colaMensajes.then(async () => {
+        if (!rawMsg.message || rawMsg.key.fromMe) return;
+        const msg = await normalizeMessage(sock,rawMsg);
         if (!msg.message || msg.key.fromMe) return;
 
+        if (!msg.key.remoteJid.endsWith('@g.us') && await ayuda.handle(sock, msg)) return;
         if (await rentas.handle(sock, msg)) return;
         if (await moderacion.handle(sock, msg)) return;
+        if (await ayuda.handle(sock, msg)) return;
         if (await tiendas.handle(sock, msg)) return;
 
         const chatId = msg.key.remoteJid;
@@ -164,7 +171,7 @@ async function iniciarBot() {
                         const grupoVentas = datos.grupoVentas;
                         const cliente = datos.cliente;
 
-                        if (rentas.allowed(grupoVentas) && tiendaDB.shop(grupoVentas)?.mode !== 'tienda' && configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
+                        if (!ayuda.paused() && rentas.allowed(grupoVentas) && tiendaDB.shop(grupoVentas)?.mode !== 'tienda' && configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
                             const msgToForward = { key: msg.key, message: msg.message };
                             try {
                                 await sock.sendMessage(grupoVentas, { forward: msgToForward });
@@ -191,7 +198,7 @@ async function iniciarBot() {
                         const cliente = datos.cliente;
                         const costo = datos.costo;
 
-                        if (rentas.allowed(grupoVentas) && tiendaDB.shop(grupoVentas)?.mode !== 'tienda' && configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
+                        if (!ayuda.paused() && rentas.allowed(grupoVentas) && tiendaDB.shop(grupoVentas)?.mode !== 'tienda' && configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
                             try {
                                 let fuePorDeuda = false;
                                 if (configSistema.deudas && configSistema.deudas[grupoVentas] && configSistema.deudas[grupoVentas][cliente] >= costo) {
@@ -283,9 +290,7 @@ Envía tus datos con el siguiente formato (separado por un espacio):
 • Ejemplo CURP: \`ROMA010203HTCMNX00 CLON\`
 
 📝 *OTROS:*
-• \`.receta [Datos]\`
-• \`.cescolar [Datos]\`
-• \`.cmedico [Datos]\``;
+Consulta .jinni para administrar el grupo.`;
             return await responder(menuCmd);
         }
 
@@ -323,13 +328,13 @@ Envía tus datos con el siguiente formato (separado por un espacio):
         }
 
         if (textoMensaje.toLowerCase() === '/renapo off' && tienePermisoOperativo && esGrupo) {
-            configSistema.renapoActivo = false;
+            configSistema.renapoGrupos = configSistema.renapoGrupos || {}; configSistema.renapoGrupos[chatId] = false;
             guardarConfig(configSistema);
             return await responder('🛑 *SISTEMA CAÍDO ACTIVADO*\nLos pedidos de actas están bloqueados temporalmente.');
         }
 
         if (textoMensaje.toLowerCase() === '/renapo on' && tienePermisoOperativo && esGrupo) {
-            configSistema.renapoActivo = true;
+            configSistema.renapoGrupos = configSistema.renapoGrupos || {}; configSistema.renapoGrupos[chatId] = true;
             guardarConfig(configSistema);
             return await responder('✅ *SISTEMA RESTABLECIDO*\nEl sistema de actas nacional vuelve a operar con normalidad.');
         }
@@ -381,11 +386,11 @@ Envía tus datos con el siguiente formato (separado por un espacio):
         }
 
         if (textoMensaje.toLowerCase() === '.cerrar' && tienePermisoOperativo && esGrupo) {
-            try { await sock.groupSettingUpdate(chatId, 'announcement'); await responder('✅ *Grupo cerrado exitosamente.*'); } catch (e) {} return;
+            try { await sock.groupSettingUpdate(chatId, 'announcement'); await responder('✅ *Grupo cerrado exitosamente.*'); } catch (e) { await responder('⚠️ No se pudo cambiar el grupo: verifica que el bot sea administrador.'); } return;
         }
 
         if (textoMensaje.toLowerCase() === '.abrir' && tienePermisoOperativo && esGrupo) {
-            try { await sock.groupSettingUpdate(chatId, 'not_announcement'); await responder('🔓 *Grupo abierto exitosamente.*'); } catch (e) {} return;
+            try { await sock.groupSettingUpdate(chatId, 'not_announcement'); await responder('🔓 *Grupo abierto exitosamente.*'); } catch (e) { await responder('⚠️ No se pudo cambiar el grupo: verifica que el bot sea administrador.'); } return;
         }
 
         if (textoMensaje.toLowerCase() === '/activargrupo') {
@@ -408,6 +413,7 @@ Envía tus datos con el siguiente formato (separado por un espacio):
             try {
                 const args = textoMensaje.split(' ').filter(a => a.trim() !== ""); if (args.length < 2) return;
                 const aliasDestino = args[1].toLowerCase(); const idDelChatDestino = configSistema.gruposDestino[aliasDestino];
+                if (idDelChatDestino && !deMiNumero && configSistema.propietariosGrupos[idDelChatDestino] !== senderViejo) return await responder('⚠️ Ese grupo pertenece a otro cliente.');
                 if (!idDelChatDestino) return await responder(`⚠️ El alias *${aliasDestino}* no existe.`);
 
                 let targetUser = "";
@@ -740,7 +746,7 @@ Envía tus datos con el siguiente formato (separado por un espacio):
 
         if (textoMensaje.toLowerCase() === '.grupos' && tienePermisoOperativo) {
             let list = "📂 *Grupos en Memoria:*\n\n"; let aliases = configSistema.gruposDestino || {};
-            for (const [alias, id] of Object.entries(aliases)) list += `🏷️ *Alias:* ${alias}\n🆔 *ID:* ${id}\n\n`;
+            for (const [alias, id] of Object.entries(aliases)) if (deMiNumero || configSistema.propietariosGrupos[id] === senderViejo) list += `🏷️ *Alias:* ${alias}\n🆔 *ID:* ${id}\n\n`;
             await responder(list || "📂 No hay grupos guardados."); return;
         }
 
@@ -759,6 +765,7 @@ Envía tus datos con el siguiente formato (separado por un espacio):
         if (textoMensaje.toLowerCase().startsWith('/setgrupo ')) {
             if (!esGrupo || (!deMiNumero && !esAdminDelGrupo)) return;
             const args = textoMensaje.split(' ').filter(a => a.trim() !== ""); if (args.length < 2) return;
+            if (configSistema.gruposDestino[args[1].toLowerCase()] && configSistema.gruposDestino[args[1].toLowerCase()] !== chatId) return await responder('⚠️ Ese alias ya pertenece a otro grupo.');
             configSistema.gruposDestino[args[1].toLowerCase()] = chatId; guardarConfig(configSistema); await responder(`✅ *Enlace Exitoso!* Alias: *${args[1].toLowerCase()}*`); return;
         }
 
@@ -767,6 +774,7 @@ Envía tus datos con el siguiente formato (separado por un espacio):
             if (!alias) return await responder('⚠️ Escribe el alias de tu grupo de ventas.');
             const idVentas = configSistema.gruposDestino[alias];
             if (!idVentas) return await responder(`⚠️ El alias *${alias}* no existe.`);
+            if (!deMiNumero && configSistema.propietariosGrupos[idVentas] !== senderViejo) return await responder('⚠️ Solo el dueño de esas ventas puede vincular el proveedor.');
             configSistema.gruposProveedores = configSistema.gruposProveedores || {};
             configSistema.gruposProveedores[idVentas] = chatId;
             guardarConfig(configSistema);
@@ -775,8 +783,9 @@ Envía tus datos con el siguiente formato (separado por un espacio):
         }
 
         if (textoMensaje.toLowerCase().startsWith('/precio ') && tienePermisoOperativo && esGrupo) {
-            const args = textoMensaje.split(' ').filter(a => a.trim() !== ""); if (args.length < 3) return;
-            let tipoServicio = args[1].toLowerCase(); const nuevoPrecio = parseInt(args[2], 10); if (isNaN(nuevoPrecio) || nuevoPrecio < 1) return;
+            const args = textoMensaje.split(/\s+/); if (args.length !== 3) return await responder("⚠️ Usa /precio servicio cantidad (número entero positivo).");
+            let tipoServicio = args[1].toLowerCase(); const nuevoPrecio = Number(args[2]); if (!Number.isSafeInteger(nuevoPrecio) || nuevoPrecio < 1) return await responder("⚠️ El precio debe ser un número entero positivo.");
+            if (!["actas", "acta", ...Object.keys(PRECIOS_BASE)].includes(tipoServicio)) return await responder("⚠️ Servicio desconocido. Consulta .jinni.");
             if (!configSistema.precios[chatId]) configSistema.precios[chatId] = { ...PRECIOS_BASE };
             
             if (tipoServicio === 'actas' || tipoServicio === 'acta') {
@@ -797,7 +806,7 @@ Envía tus datos con el siguiente formato (separado por un espacio):
             return;
         }
 
-        if (textoMensaje.toLowerCase().startsWith('/saldo') && tienePermisoOperativo) {
+        if (/^\/saldo(?:\s|$)/i.test(textoMensaje) && tienePermisoOperativo) {
             let targetGroup = chatId;
             
             if (!esGrupo) return await responder('⚠️ Este comando es solo para usar dentro del grupo.');
@@ -955,7 +964,7 @@ Envía tus datos con el siguiente formato (separado por un espacio):
         if (textoMensaje.toLowerCase() === '.stock') { if (esGrupo && !esGrupoAutorizado) return; await responder(configSistema.stockGrupos[chatId] || 'ℹ️ Sin stock configurado.'); return; }
 
         if (textoMensaje.startsWith('.') || textoMensaje.startsWith('/')) {
-            // Permitir fallos de comandos admin sin bloquear
+            await responder('⚠️ Comando no disponible, incompleto o sin permiso. Consulta .jinni para ver el modo, los permisos y ejemplos.'); return;
         } else if (esGrupo && !esGrupoAutorizado) {
             return;
         }
@@ -997,7 +1006,7 @@ Envía tus datos con el siguiente formato (separado por un espacio):
             if (tramitesAProcesar.length > 0) {
                 
                 let contieneActas = tramitesAProcesar.some(t => t.nombreServicio.includes('Acta'));
-                if (contieneActas && configSistema.renapoActivo === false) {
+                if (contieneActas && (configSistema.renapoGrupos?.[chatId] ?? configSistema.renapoActivo) === false) {
                     return await responder('⚠️ *SISTEMA NACIONAL EN MANTENIMIENTO* 🛑\nPor el momento no podemos procesar actas de RENAPO. Retomaremos pedidos en cuanto se restablezca.');
                 }
 
