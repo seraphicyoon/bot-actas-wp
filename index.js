@@ -18,7 +18,10 @@ process.on('unhandledRejection', (reason) => { console.log('⚠️ Error bloquea
 const port = process.env.PORT || 3000;
 http.createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end('Naevis Bot Activo - Baileys Puro'); }).listen(port);
 
-const SÚPER_ADMINS_NATOS = ['525658405318@c.us', '5215658405318@c.us', '91440457773103@lid'];
+const ownerPhone = String(process.env.OWNER_WHATSAPP || '').replace(/\D/g, '');
+if (ownerPhone && !/^\d{10,15}$/.test(ownerPhone)) throw Error('OWNER_WHATSAPP debe incluir código de país y número, sin signos.');
+const ownerAliases = ownerPhone ? [ownerPhone + '@c.us', ...(ownerPhone.startsWith('52') && ownerPhone.length === 12 ? ['521' + ownerPhone.slice(2) + '@c.us'] : [])] : [];
+const SÚPER_ADMINS_NATOS = [...ownerAliases, '525658405318@c.us', '5215658405318@c.us', '91440457773103@lid'];
 const PRECIOS_BASE = { nacimiento: 12, nacimiento_nf: 15, matrimonio: 12, matrimonio_mf: 15, defuncion: 12, defuncion_df: 15, divorcio: 12, divorcio_d0: 15, sat: 40, rfcclon: 15, receta: 15, cescolar: 15, cmedico: 15 };
 
 const CARPETA_DATOS = process.env.RAILWAY_VOLUME_MOUNT_PATH || __dirname;
