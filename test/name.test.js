@@ -23,3 +23,12 @@ test('quoted result is delivered privately, resolved requests cannot refund and 
  }finally{f.store.close();}});
 test('notification failure refunds, uncertain delivery is held for review',async()=>{const f=setup();try{f.fail();await assert.rejects(f.handler.handle(f.sock,f.msg('/nombre Nombre Completo')));assert.equal(f.balance(),20);assert.equal(f.row().state,'rejected');}finally{f.store.close();}
  const g=setup();try{await g.handler.handle(g.sock,g.msg('/nombre Nombre Completo'));const row=g.row();g.fail();await assert.rejects(g.handler.handle(g.sock,g.msg('/r '+row.id,g.owner,'owner@s.whatsapp.net',{stanzaId:'result',quotedMessage:{conversation:'Result'}})));assert.equal(g.row().state,'review');assert.equal(g.balance(),10);}finally{g.store.close();}});
+
+test('owner lookup and private chat binding recover pending notices without new charges',async()=>{const f=setup();try{
+ f.sock.onWhatsApp=async()=>[{exists:true,jid:'owner@lid'}];
+ await f.handler.handle(f.sock,f.msg('/nombre Nombre Completo'));assert.equal(f.sent[0].to,'owner@lid');assert.equal(f.balance(),10);
+ f.handler.observePrivate(f.msg('.jinni',f.owner,'owner@s.whatsapp.net'));
+ f.sock.onWhatsApp=async()=>{throw Error('Lookup should not run for verified private chat');};
+ const before=f.sent.length;await f.handler.handle(f.sock,f.msg('/avisos',f.owner,'owner@s.whatsapp.net'));
+ assert.equal(f.sent[before].to,'owner@s.whatsapp.net');assert.equal(f.balance(),10);assert.match(f.sent.at(-1).text,/Avisos recuperados: 1/);
+ }finally{f.store.close();}});

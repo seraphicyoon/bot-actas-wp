@@ -141,6 +141,7 @@ async function iniciarBot() {
         if (!rawMsg.message || rawMsg.key.fromMe) return;
         const msg = await normalizeMessage(sock,rawMsg);
         if (!msg.message || msg.key.fromMe) return;
+        nombres.observePrivate(msg);
 
         if (!msg.key.remoteJid.endsWith('@g.us') && await ayuda.handle(sock, msg)) return;
         if (await rentas.handle(sock, msg)) return;

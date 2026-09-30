@@ -86,8 +86,8 @@ Los pedidos requieren proveedor y precios configurados. La entrega depende de es
 .grupos — aliases del dueño/owner.
 /activargrupo y /desactivargrupo — activa/desactiva el grupo autorizado. No sustituyen la key de renta.
 Los comandos .receta, .cescolar y .cmedico no están implementados; no se anuncian como disponibles.`;
-const ownerGuide=`👑 *OWNER DEL BOT — PRIVADO*
-/r ID — responde al resultado para entregarlo al privado del cliente de una búsqueda /nombre.
+const ownerGuide=`👑 *OWNER DEL BOT — PRIVADO*\n/avisos — recupera los avisos pendientes de /nombre en tu privado SIN volver a cobrar.
+Escribe .jinni al privado desde tu número principal para registrar el chat donde recibirás los avisos.\n/r ID — responde al resultado para entregarlo al privado del cliente de una búsqueda /nombre.
 /rechazar — responde al aviso de búsqueda, o usa /rechazar ID; devuelve $10 una sola vez y avisa al cliente.
 /genkey 1 dia / /genkey 7 dias / /genkey 12 horas — key de un uso; de 1 minuto a 366 días.
 El cliente administrador escribe /activar KEY en ventas. El tiempo comienza ahí; luego .actienda alias o .actram alias.
