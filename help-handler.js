@@ -30,7 +30,7 @@ const shopGuide=`🛍️ *MODO TIENDA*
 
 *Clientes, en ventas*
 .stock — catálogo con precios y unidades.
-.comprar codigo — compra UNA unidad con tu saldo; llega al privado y se manda copia al grupo del dueño.
+.n Texto — anuncio con menciones en ventas (dueño/admin, no ayudantes); admite imagen o video.\n.comprar codigo — compra UNA unidad con tu saldo; llega al privado y se manda copia al grupo del dueño.
 Ejemplo: .comprar monedero
 
 *Configuración (dueño)*

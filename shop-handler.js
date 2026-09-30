@@ -136,8 +136,14 @@ function createShopHandler({ store, loadConfig, saveConfig, loadBalances, saveBa
             const requireAdmin = () => {if (!admin) throw Error('Solo el dueño o un administrador autorizado puede usar este comando.');};
             const requirePrivate = () => {requireAdmin(); if(!privateGroup) throw Error('Usa este comando en el grupo privado de stock.');};
             if (!config.gruposAutorizados.includes(shop.id)) return true;
+            if (/^\.n(?:\s|$)/i.test(text)) {
+                requireAdmin();
+                if (group !== shop.id) throw Error('Usa .n en el grupo de ventas.');
+                if (!text.slice(2).trim()) throw Error('Usa .n Texto del anuncio.');
+                return false; // Reuse the existing announcement handler, including media and mentions.
+            }
             if (lower==='.ayudatienda' || lower==='.comandos' || lower==='.jinni') {
-                await reply('🛍️ TIENDA\n.stock — catálogo\n.comprar código — compra una unidad y recibe por privado\n.saldo — tu saldo\n.pago — datos para recargar\n\nADMINISTRACIÓN\n.ayudante / .quitarayudante (respondiendo al usuario)\n.ayudantes\n.kick / .mute 10m / .unmute (respondiendo al usuario)\n.actienda alias / .actram alias (grupo de ventas)\n/vincular alias (grupo privado del dueño)\n/producto código precio nombre\n/addstock código (respondiendo a una unidad)\n/inventario /verstock código /retirar ID\n/precio código precio\n/setpago datos\n/s cantidad y -s cantidad (respondiendo al cliente en ventas)\n/pedidos /resolver ID entregado|cancelar\n/reavisar (reintenta avisos al grupo privado)'); return true;
+                await reply('🛍️ TIENDA\n.stock — catálogo\n.comprar código — compra una unidad y recibe por privado\n.saldo — tu saldo\n.pago — datos para recargar\n\nADMINISTRACIÓN\n.n Texto — anuncio con menciones (dueño/admin)\n.ayudante / .quitarayudante (respondiendo al usuario)\n.ayudantes\n.kick / .mute 10m / .unmute (respondiendo al usuario)\n.actienda alias / .actram alias (grupo de ventas)\n/vincular alias (grupo privado del dueño)\n/producto código precio nombre\n/addstock código (respondiendo a una unidad)\n/inventario /verstock código /retirar ID\n/precio código precio\n/setpago datos\n/s cantidad y -s cantidad (respondiendo al cliente en ventas)\n/pedidos /resolver ID entregado|cancelar\n/reavisar (reintenta avisos al grupo privado)'); return true;
             }
             if (lower==='.saldo' || lower==='.versaldo') {await reply('🔋 Saldo en '+shop.alias+': '+money(store.balance(shop.id,sender))); return true;}
             if (lower==='.pago') {await reply(shop.payment || 'Sin datos de pago configurados.'); return true;}
