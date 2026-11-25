@@ -1,6 +1,6 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict');
-const {identify,extractLink,downloadArgs,createTikTokHandler}=require('../tiktok-handler');
+const {identify,extractLink,downloadArgs,validateProbe,createTikTokHandler}=require('../tiktok-handler');
 test('allowlisted video links, no arbitrary URLs or playlists',()=>{
  const samples=[['https://vm.tiktok.com/Zabc/?x=1','TikTok'],['https://www.instagram.com/reel/ABC-1/?igsh=foo','Instagram'],['https://www.youtube.com/watch?v=abcdefghijk&list=123','YouTube'],['https://youtu.be/abcdefghijk?si=abc','YouTube'],['https://www.youtube.com/shorts/abcdefghijk','YouTube'],['https://www.facebook.com/watch/?v=123456','Facebook'],['https://www.facebook.com/share/r/abc/','Facebook'],['https://x.com/user/status/123456?s=20','X'],['https://www.pinterest.com/pin/123/','Pinterest'],['https://www.reddit.com/r/test/comments/abc/title/','Reddit'],['https://vimeo.com/1234','Vimeo']];
  for(const [url,name] of samples){const item=identify(url);assert.equal(item.name,name);assert.equal(identify(item.url).url,item.url);const args=downloadArgs(item.url,'test.mp4');assert.ok(args.includes('--no-playlist'));assert.ok(args.includes('--use-extractors'));assert.ok(!args.includes('generic'));}
@@ -19,4 +19,13 @@ test('new commands share existing group setting, preserve permissions and async 
  await send(a,'.tiktok off');assert.equal(flags.get(a),0);clock+=20000;await send(a,'https://vm.tiktok.com/Zabc/');assert.equal(count,1);
  await send(a,'.videos on');assert.equal(flags.get(a),1);await send(b,'https://youtu.be/abcdefghijk');assert.equal(count,1);
  active=false;await send(a,'https://youtu.be/abcdefghijk');assert.equal(count,1);active=true;paused=true;await send(a,'https://youtu.be/abcdefghijk');assert.equal(count,1);
+});
+
+test('unknown metadata duration allowed, actual file duration enforced',()=>{
+ assert.ok(downloadArgs('https://www.instagram.com/reels/DgHynC-opX_/','test.mp4').includes('!is_live & duration <=? 90'));
+ const probe=(duration,codec_type='video')=>JSON.stringify({format:{duration},streams:[{codec_type}]});
+ assert.doesNotThrow(()=>validateProbe(probe('12.5')));
+ assert.doesNotThrow(()=>validateProbe(probe('90')));
+ for(const d of ['90.1','N/A',null,0,-1])assert.throws(()=>validateProbe(probe(d)));
+ assert.throws(()=>validateProbe(probe('12','audio')));
 });

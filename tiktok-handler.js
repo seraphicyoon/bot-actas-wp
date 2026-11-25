@@ -31,7 +31,12 @@ function downloadArgs(url,out){
  const site=identify(url);
  if(!site||site.url!==url)throw Error('URL inválida');
  const format=site.name==='TikTok'?'best[ext=mp4][format_note!*=watermarked]/best[ext=mp4]':'b[ext=mp4][height<=?720]/bv[ext=mp4][height<=?720][vcodec^=avc]+ba[ext=m4a]/bv[ext=mp4][height<=?720]+ba[ext=m4a]';
- return ['--ignore-config','--no-cache-dir','--no-playlist','--playlist-items','1','--use-extractors',site.extractors,'--socket-timeout','10','--retries','1','--extractor-retries','1','--max-filesize','15M','--match-filters','!is_live & duration <= 90','-f',format,'--merge-output-format','mp4','--no-progress','-o',out,'--',url];
+ return ['--ignore-config','--no-cache-dir','--no-playlist','--playlist-items','1','--use-extractors',site.extractors,'--socket-timeout','10','--retries','1','--extractor-retries','1','--max-filesize','15M','--match-filters','!is_live & duration <=? 90','-f',format,'--merge-output-format','mp4','--no-progress','-o',out,'--',url];
+}
+function validateProbe(stdout){
+ const info=JSON.parse(stdout),duration=Number(info.format?.duration);
+ if(!Number.isFinite(duration)||duration<=0||duration>90)throw Object.assign(Error('Duración inválida o superior a 90 segundos.'),{code:'VIDEO_DURATION'});
+ if(!info.streams?.some(s=>s.codec_type==='video'))throw Object.assign(Error('El archivo no contiene video.'),{code:'VIDEO_FORMAT'});
 }
 async function download(url){
  if(extractLink(url)!==url)throw Error('URL inválida');
@@ -39,8 +44,10 @@ async function download(url){
  try{
   const out=path.join(dir,'video.mp4');
   await run(process.env.NAEVIS_YTDLP||'yt-dlp',downloadArgs(url,out),{timeout:65000,maxBuffer:128*1024,windowsHide:true});
-  const stat=await fs.stat(out);
+  const stat=await fs.stat(out).catch(e=>{if(e.code==='ENOENT')throw Object.assign(Error('No se obtuvo archivo: filtro, tamaño o formato no disponible.'),{code:'VIDEO_NO_FILE'});throw e;});
   if(!stat.isFile()||!stat.size||stat.size>MAX)throw Error('Tamaño inválido');
+  const probe=await run(process.env.NAEVIS_FFPROBE||'ffprobe',['-v','error','-show_entries','format=duration:stream=codec_type','-of','json',out],{timeout:10000,maxBuffer:128*1024,windowsHide:true});
+  validateProbe(probe.stdout);
   return await fs.readFile(out);
  }finally{await fs.rm(dir,{recursive:true,force:true}).catch(()=>{});}
 }
@@ -87,11 +94,11 @@ function createTikTokHandler({store,owners,loadConfig,allowed,paused,isHelper,fe
     if(active(id))await sock.sendMessage(id,{video,mimetype:'video/mp4',caption:'🌸 Naevis Downloader • '+identify(url).name},{quoted:msg});
    }catch(e){
     console.error('[VIDEOS]',e.code||e.name);
-    if(active(id))await reply('⚠️ No pude descargar este video. Puede estar restringido, superar los límites o no estar disponible. Intenta con otro enlace.');
+    if(active(id))await reply(e.code==='VIDEO_DURATION'?'⚠️ El video supera los 90 segundos o no pude verificar su duración.':'⚠️ No pude descargar este video. Puede estar restringido, superar los límites o no estar disponible. Intenta con otro enlace.');
    }finally{busy=false;}
   })().catch(e=>console.error('[VIDEOS]',e.code||e.name));
   return true;
  }
  return {handle};
 }
-module.exports={createTikTokHandler,extractLink,identify,downloadArgs,download};
+module.exports={createTikTokHandler,extractLink,identify,downloadArgs,validateProbe,download};
