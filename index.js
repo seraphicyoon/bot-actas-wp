@@ -16,6 +16,7 @@ const {createStickerHandler} = require('./sticker-handler');
 const {createTikTokHandler} = require('./tiktok-handler');
 const {createWelcomeHandler} = require('./welcome-handler');
 const {createAnnouncementHandler} = require('./announcement-handler');
+const {createRouter} = require('./command-router');
 
 process.on('unhandledRejection', (reason) => { console.log('⚠️ Error bloqueado:', reason); });
 
@@ -67,12 +68,13 @@ const moderacion = createModerationHandler({store: tiendaDB, owners: SÚPER_ADMI
 const tiendas = createShopHandler({ store: tiendaDB, loadConfig: cargarConfig, saveConfig: guardarConfig,
     isHelper: moderacion.isHelper, loadBalances: cargarSaldos, saveBalances: guardarSaldos, superAdmins: SÚPER_ADMINS_NATOS, download: downloadContentFromMessage });
 const rentas = createRentalHandler({ store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, saveConfig: guardarConfig });
-const ayuda = createHelpHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig});
+const ayuda = createHelpHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, isHelper: moderacion.isHelper, allowed: rentas.allowed});
 const nombres = createNameHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, loadBalances: cargarSaldos, saveBalances: guardarSaldos, allowed: rentas.allowed});
 const stickers = createStickerHandler({owners: SÚPER_ADMINS_NATOS, download: downloadContentFromMessage, loadConfig: cargarConfig, saveConfig: guardarConfig, store: tiendaDB, allowed: rentas.allowed, paused: ayuda.paused, isHelper: moderacion.isHelper});
 const tiktok = createTikTokHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, allowed: rentas.allowed, paused: ayuda.paused, isHelper: moderacion.isHelper});
 const bienvenida = createWelcomeHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, allowed: rentas.allowed, paused: ayuda.paused});
 const anuncios = createAnnouncementHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, allowed: rentas.allowed, paused: ayuda.paused, isHelper: moderacion.isHelper, download: downloadContentFromMessage});
+const router = createRouter({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, rentas, moderacion, ayuda, stickers, tiktok, bienvenida, anuncios, nombres, tiendas});
 let colaMensajes = Promise.resolve();
 let relojRentas;
 
@@ -138,16 +140,7 @@ async function iniciarBot() {
         if (!msg.message || msg.key.fromMe) return;
         nombres.observePrivate(msg);
 
-        if (!msg.key.remoteJid.endsWith('@g.us') && await ayuda.handle(sock, msg)) return;
-        if (await rentas.handle(sock, msg)) return;
-        if (await moderacion.handle(sock, msg)) return;
-        if (await ayuda.handle(sock, msg)) return;
-        if (await stickers.handle(sock, msg)) return;
-        if (await bienvenida.handle(sock, msg)) return;
-        if (await tiktok.handle(sock, msg)) return;
-        if (await anuncios.handle(sock, msg)) return;
-        if (await nombres.handle(sock, msg)) return;
-        if (await tiendas.handle(sock, msg)) return;
+        if (await router.handle(sock, msg)) return;
 
         const chatId = msg.key.remoteJid;
         const esGrupo = chatId.endsWith('@g.us');
@@ -970,7 +963,7 @@ Consulta .jinni para administrar el grupo.`;
         if (textoMensaje.toLowerCase() === '.stock') { if (esGrupo && !esGrupoAutorizado) return; await responder(configSistema.stockGrupos[chatId] || 'ℹ️ Sin stock configurado.'); return; }
 
         if (textoMensaje.startsWith('.') || textoMensaje.startsWith('/')) {
-            await responder('⚠️ Comando no disponible, incompleto o sin permiso. Consulta .jinni para ver el modo, los permisos y ejemplos.'); return;
+            await responder('⚠️ Comando no disponible, incompleto o sin permiso. Consulta .ayuda para ver el modo, los permisos y ejemplos.'); return;
         } else if (esGrupo && !esGrupoAutorizado) {
             return;
         }

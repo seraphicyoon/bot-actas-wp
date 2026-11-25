@@ -1,5 +1,7 @@
 'use strict';
 const {canonical} = require('./message-utils');
+const {contextOf,roleOf}=require('./command-router');
+const {makeMenus,modeLabel}=require('./command-menus');
 const common=`📚 *GUÍA DE NAEVIS*
 
 *Antes de empezar*
@@ -116,7 +118,7 @@ Una key nueva renueva al mismo cliente. Al vencer bloquea funciones y avisa; con
 /mantenimiento o /apagado — pausa funciones, sin matar el proceso.
 /prendido — reanuda funciones.
 Para arrancar un proceso detenido necesitas PM2 en el VPS; no puede recibir comandos si está apagado.`;
-function createHelpHandler({store,owners,loadConfig}){
+function createHelpHandler({store,owners,loadConfig,isHelper=()=>false,allowed=()=>true}){
  store.db.exec("CREATE TABLE IF NOT EXISTS bot_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)");
  const paused=()=>store.db.prepare("SELECT value FROM bot_settings WHERE key='paused'").get()?.value==='1';
  async function handle(sock,msg){const chat=msg.key.remoteJid,m=msg.message?.ephemeralMessage?.message||msg.message;const text=(m?.conversation||m?.extendedTextMessage?.text||m?.imageMessage?.caption||m?.documentMessage?.caption||'').trim().toLowerCase();const sender=canonical(msg.key.participant||chat),owner=owners.includes(sender);const reply=t=>sock.sendMessage(chat,{text:t},{quoted:msg});
@@ -124,10 +126,15 @@ function createHelpHandler({store,owners,loadConfig}){
   if(!owner){await reply('⚠️ Solo la owner del bot puede cambiar el mantenimiento.');return true;}
   store.db.prepare("INSERT INTO bot_settings VALUES('paused',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(text==='/prendido'?'0':'1');await reply(text==='/prendido'?'✅ Bot reanudado.':'⚙️ Bot en mantenimiento. Para reanudar usa /prendido.');return true;
  }
- if(text==='.jinni'&&!owner){await reply('🔒 Menú exclusivo de la administración de Naevis. Para stickers escribe .stickers; para ayuda de tienda, .ayudatienda.');return true;}
- if(text==='.jinni'||text==='.ayudatienda'){
-  await reply(common);const shop=store.shop(chat);await reply(shop?.mode==='tienda'?shopGuide:procedures);
-  if(owner&&text==='.jinni')await reply(ownerGuide);else if(!chat.endsWith('@g.us'))await reply('Para usar el bot, añade al bot a tu grupo de ventas y activa la key que te entregue la owner con /activar KEY.');return true;
+ if(text==='.jinni'&&!owner){await reply('🔒 Menú exclusivo de la administración de Naevis. Escribe .ayuda para consultar tus comandos.');return true;}
+ if(['.jinni','.ayuda','.ayudatienda','.comandos','.modo'].includes(text)){
+  const config=loadConfig(),ctx=contextOf(store,chat,config);
+  if(ctx.group&&ctx.mode!=='external'&&!allowed(chat)){await reply('🛑 Servicio sin renta activa.');return true;}
+  const role=await roleOf({sock,msg,ctx,owners,config,isHelper});
+  if(text==='.modo'){await reply('🌸 Modo actual: '+modeLabel(ctx));return true;}
+  const sections=makeMenus({ctx,role,ownerGuide,common,shopGuide,procedures});
+  for(const section of sections)await reply(section);
+  return true;
  }
  if(paused()) {if(text.startsWith('.')||text.startsWith('/')||text.startsWith('-s'))await reply('⚙️ Bot en mantenimiento. La owner debe usar /prendido.');return true;}
  return false;

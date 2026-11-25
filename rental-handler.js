@@ -55,7 +55,7 @@ function createRentalHandler({store,owners,loadConfig,saveConfig,now=Date.now}) 
    const expires=redeem(args[1],chat,sender),config=loadConfig();
    config.gruposAutorizados=config.gruposAutorizados||[];if(!config.gruposAutorizados.includes(chat))config.gruposAutorizados.push(chat);
    config.propietariosGrupos=config.propietariosGrupos||{};config.propietariosGrupos[chat]=sender;saveConfig(config);
-   await reply(`✅ *RENTA ACTIVADA*\nVence: ${new Date(expires).toISOString()} (UTC)\n\nElige tu función:\n.actienda alias\n.actram alias`);return true;
+   await reply(`✅ *RENTA ACTIVADA*\nVence: ${new Date(expires).toISOString()} (UTC)\n\nPuedes usar funciones generales sin elegir modo. Para ventas, elige:\n.actienda alias\n.actram alias\nConsulta .ayuda`);return true;
   }
   if(cmd==='/addvendedor'){await reply('Las rentas ahora se activan con /activar KEY. La owner genera las keys por privado con /genkey.');return true;}
   if(!group)return false;

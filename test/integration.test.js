@@ -9,9 +9,9 @@ async function setup(){const dir=fs.mkdtempSync(path.join(os.tmpdir(),'naevis-in
  let seq=0;async function send(text,who=owner,group=sales,target){sent.length=0;const message=target?{extendedTextMessage:{text,contextInfo:{participant:target}}}:{conversation:text};events['messages.upsert']({type:'notify',messages:[{key:{id:String(++seq),remoteJid:group,participant:group.endsWith('@g.us')?who+'@s.whatsapp.net':undefined},message}]});await vm.runInContext('colaMensajes',sandbox);assert.deepEqual(errors,[]);return sent;}
  const close=()=>{vm.runInContext('tiendaDB.close()',sandbox);fs.rmSync(dir,{recursive:true});};return {send,sent,close,sandbox,owner,sales};}
 test('actual routing: help, legacy balances, unknown commands, maintenance and resume',async()=>{const f=await setup();try{
- let out=await f.send('.jinni');assert.ok(out.some(m=>m.text?.includes('MODO TRÁMITES')));assert.ok(out.some(m=>m.text?.includes('OWNER DEL BOT')));assert.ok(out.some(m=>m.text?.includes('Stickers con sonido')));
+ let out=await f.send('.jinni');assert.ok(out.some(m=>m.text?.includes('MODO TRÁMITES')));assert.ok(out.some(m=>m.text?.includes('OWNER DEL BOT')));assert.ok(out.some(m=>m.text?.includes('stickers con sonido')));
  out=await f.send('.jinni','buyer');assert.equal(out.length,1);assert.match(out[0].text,/exclusivo/);
- out=await f.send('.ayudatienda','buyer');assert.ok(out.some(m=>m.text?.includes('MODO TRÁMITES')));assert.ok(!out.some(m=>m.text?.includes('OWNER DEL BOT')));
+ out=await f.send('.ayudatienda','buyer');assert.ok(out.some(m=>m.text?.includes('SIN MODO EXPLÍCITO')));assert.ok(!out.some(m=>m.text?.includes('OWNER DEL BOT')));
  out=await f.send('/s 12.34',f.owner,f.sales,'buyer@lid');assert.match(out[0].text,/12.34/);
  out=await f.send('/nombre Nombre Completo','buyer');assert.ok(out.some(m=>m.text?.includes('Comenzando la busqueda')));
  const search=vm.runInContext('tiendaDB.db.prepare("SELECT id FROM name_requests LIMIT 1").get()',f.sandbox);
@@ -31,4 +31,15 @@ test('actual routing: shop activation, roles, quoted saldo, private guide and he
  out=await f.send('.mute 10m','helper',f.sales,'buyer@lid');assert.match(out[0].text,/SILENCIADO/);
  out=await f.send('.jinni','buyer');assert.ok(out[0].delete);assert.equal(out.length,1);
  await f.send('.unmute','helper',f.sales,'buyer@lid');out=await f.send('.saldo','buyer');assert.match(out[0].text,/10.00/);
+ }finally{f.close();}});
+
+test('general commands bypass shop mode, and menus are contextual',async()=>{const f=await setup();try{
+ let out=await f.send('.modo');assert.match(out[0].text,/SIN MODO/);
+ await f.send('.actienda demo');out=await f.send('.modo');assert.match(out[0].text,/TIENDA/);
+ out=await f.send('.ayuda','buyer');assert.ok(out.some(m=>m.text?.includes('.comprar')));assert.ok(!out.some(m=>m.text?.includes('/addstock')||m.text?.includes('/precio servicio')));
+ out=await f.send('.abrir');assert.match(out[0].text,/Grupo abierto/);
+ out=await f.send('.cerrar','buyer');assert.match(out[0].text,/Solo el dueño/);
+ out=await f.send('/nombre Nombre Completo','buyer');assert.match(out[0].text,/corresponde a trámites/);
+ out=await f.send('/inventario');assert.match(out[0].text,/grupo privado/);
+ await f.send('.actram demo');out=await f.send('.comprar prueba','buyer');assert.match(out[0].text,/exclusivo del modo tienda/);
  }finally{f.close();}});

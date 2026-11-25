@@ -1,0 +1,31 @@
+'use strict';
+const fs=require('node:fs'),cp=require('node:child_process'),path=require('node:path');
+
+function normalize(s){return s.replace(/\r\n/g,'\n').trimEnd();}
+try{
+ const ref=process.argv[2]||'FETCH_HEAD',get=(f,rev=ref)=>cp.execFileSync('git',['show',rev+':'+f],{encoding:'utf8'});
+ const previous='f70c505635564168f96a48c661ddc09f5f0d3d28';
+ const files={};
+ // Index has local changes on the VPS. Apply only the exact routing anchors, never overwrite it.
+ let index=fs.readFileSync('index.js','utf8');
+ const pairs=[["const {createAnnouncementHandler} = require('./announcement-handler');","const {createAnnouncementHandler} = require('./announcement-handler');\nconst {createRouter} = require('./command-router');"],["const ayuda = createHelpHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig});","const ayuda = createHelpHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, isHelper: moderacion.isHelper, allowed: rentas.allowed});"],["let colaMensajes = Promise.resolve();","const router = createRouter({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, rentas, moderacion, ayuda, stickers, tiktok, bienvenida, anuncios, nombres, tiendas});\nlet colaMensajes = Promise.resolve();"],["        if (!msg.key.remoteJid.endsWith('@g.us') && await ayuda.handle(sock, msg)) return;\n        if (await rentas.handle(sock, msg)) return;\n        if (await moderacion.handle(sock, msg)) return;\n        if (await ayuda.handle(sock, msg)) return;\n        if (await stickers.handle(sock, msg)) return;\n        if (await bienvenida.handle(sock, msg)) return;\n        if (await tiktok.handle(sock, msg)) return;\n        if (await anuncios.handle(sock, msg)) return;\n        if (await nombres.handle(sock, msg)) return;\n        if (await tiendas.handle(sock, msg)) return;","        if (await router.handle(sock, msg)) return;"],["Consulta .jinni para ver el modo, los permisos y ejemplos.","Consulta .ayuda para ver el modo, los permisos y ejemplos."]];
+
+ for(const [old,next] of pairs){if(index.split(old).length!==2)throw Error('El index local tiene diferencias en '+old.slice(0,70));index=index.replace(old,()=>next);}
+ files['index.js']=index;
+ // Help and rent modules are checked against the known deployed version before replacement.
+ for(const f of ['help-handler.js','rental-handler.js']){
+  const before=fs.readFileSync(f,'utf8'),expected=get(f,previous);
+  if(normalize(before)!==normalize(expected))throw Error('El archivo '+f+' tiene cambios locales; revisar antes de reemplazar.');
+  files[f]=get(f);
+ }
+ for(const f of ['command-router.js','command-menus.js']){if(fs.existsSync(f))throw Error('Ya existe '+f+'; no se sobrescribe.');files[f]=get(f);}
+ for(const code of Object.values(files))cp.execFileSync(process.execPath,['--check','-'],{input:code,stdio:['pipe','pipe','pipe']});
+ if(process.env.NAEVIS_CHECK==='1'){console.log('ESTRUCTURA COMPATIBLE: sin cambios');process.exit(0);}
+ const backup=fs.mkdtempSync('/root/naevis-estructura-');fs.chmodSync(backup,0o700);
+ const oldFiles=['index.js','help-handler.js','rental-handler.js'];
+ for(const f of oldFiles)fs.copyFileSync(f,path.join(backup,f));
+ const created=[];
+ try{for(const [f,code] of Object.entries(files)){if(!fs.existsSync(f))created.push(f);fs.writeFileSync(f,code);}}
+ catch(e){for(const f of oldFiles)fs.copyFileSync(path.join(backup,f),f);for(const f of created)fs.rmSync(f,{force:true});throw e;}
+ console.log('ESTRUCTURA INSTALADA. Respaldo: '+backup);
+}catch(e){console.error(e.message);process.exitCode=1;}
