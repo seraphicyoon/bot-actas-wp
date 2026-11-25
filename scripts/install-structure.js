@@ -18,7 +18,13 @@ try{
  // Help and rent modules are checked against the known deployed version before replacement.
  for(const f of ['help-handler.js','rental-handler.js']){
   const before=fs.readFileSync(f,'utf8'),expected=get(f,previous);
-  if(normalize(before)!==normalize(expected))throw Error('El archivo '+f+' tiene cambios locales; revisar antes de reemplazar.');
+  const accepted=[expected];
+  if(f==='help-handler.js'){
+   let variant=expected;
+   for(const [old,next] of [[".n Texto — anuncio con menciones en ventas (dueño/admin, no ayudantes); admite imagen o video.\\n.comprar codigo",".comprar codigo"],["*OWNER DEL BOT — PRIVADO*\\n/stickeraudio ajustar o recortar — responde a un video con sonido; también disponible en privado para la owner.\\n/avisos — recupera los avisos pendientes de /nombre en tu privado SIN volver a cobrar.\nEscribe .jinni al privado desde tu número principal para registrar el chat donde recibirás los avisos.\\n/r ID","*OWNER DEL BOT — PRIVADO*\n/r ID"]]){if(variant.split(old).length!==2)throw Error('No coincide la variante de ayuda prevista.');variant=variant.replace(old,()=>next);}
+   accepted.push(variant);
+  }
+  if(!accepted.some(v=>normalize(before)===normalize(v)))throw Error('El archivo '+f+' tiene cambios locales adicionales; revisar antes de reemplazar.');
   files[f]=get(f);
  }
  for(const f of ['command-router.js','command-menus.js']){if(fs.existsSync(f))throw Error('Ya existe '+f+'; no se sobrescribe.');files[f]=get(f);}
