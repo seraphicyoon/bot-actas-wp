@@ -24,7 +24,7 @@ test('exact commands and both frame modes',()=>{
 test('owner LID, opt-in group, admin permissions, suspended and maintenance',async()=>{
  const group='sales@g.us',owner='222@lid',sent=[];
  let config={gruposAutorizados:[group],propietariosGrupos:{[group]:owner}},active=true,maintenance=false;
- const h=createStickerHandler({owners:[owner],download:async()=>{throw Error('not expected');},loadConfig:()=>config,saveConfig:c=>{config=c},store:{shop:()=>null},allowed:()=>active,paused:()=>maintenance,isHelper:()=>false,getVersion:()=> '6.7.7'});
+ const h=createStickerHandler({owners:[owner],download:async()=>{throw Error('not expected');},loadConfig:()=>config,saveConfig:c=>{config=c},store:{shop:()=>null},allowed:()=>active,paused:()=>maintenance,isHelper:()=>false,getVersion:()=> '6.7.24'});
  const sock={sendMessage:async(j,m)=>{sent.push(m.text)},groupMetadata:async()=>({participants:[]})};
  const send=async(jid,cmd,participant)=>{sent.length=0;return h.handle(sock,{key:{remoteJid:jid,participant},message:{conversation:cmd}})};
  assert.equal(await send('111@s.whatsapp.net','/stickeraudio'),false);
@@ -49,6 +49,10 @@ test('encoder wraps documented wire fields and restores original',()=>{
    assert.deepEqual([...raw.subarray(0,2)],[0xb2,0x08]);
    assert.ok(raw.includes(Buffer.from('audio/ogg; codecs=opus')));
    assert.ok(raw.includes(Buffer.from('image/webp')));
+   // 6.7.24 copies the outer message before encoding each recipient.
+   assert.deepEqual(Buffer.from(M.encode({...marker}).finish()),raw);
+   const independent={stickerMessage:{...marker.stickerMessage}};
+   assert.deepEqual(Buffer.from(M.encode(independent).finish()),Buffer.from(old(independent).finish()));
    const nested=Buffer.from(M.encode({deviceSentMessage:{destinationJid:'123@s.whatsapp.net',message:marker}}).finish());
    assert.ok(nested.includes(raw));
  }finally{restore();}

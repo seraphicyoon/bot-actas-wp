@@ -11,6 +11,7 @@ const run = promisify(execFile);
 const LIMIT = 1_000_000;
 const INPUT_LIMIT = 16 * 1024 * 1024;
 const CLIP = 8;
+function supportedVersion(version) { return ['6.7.7','6.7.24'].includes(version); }
 
 function chunk(tag, data) {
   const h = Buffer.alloc(8);
@@ -54,7 +55,7 @@ function addSoundExif(webp, audio, side) {
 }
 
 // Encode the two documented experimental fields without editing node_modules.
-// Only this exact message object is intercepted; regular message encoding delegates unchanged.
+// The exact sticker object identifies this operation, even when Baileys shallow-copies the message.
 function installOneMessageEncoder(proto, marker, sticker, audio) {
   const M=proto.Message, S=M.StickerMessage, A=M.AudioMessage;
   const original=M.encode;
@@ -64,7 +65,7 @@ function installOneMessageEncoder(proto, marker, sticker, audio) {
   const inner=original.call(M,{}).uint32(26*8+2).bytes(s.finish()).finish();
   const wrapper=original.call(M,{}).uint32(10).bytes(inner).finish();
   function special(message, writer) {
-    if(message!==marker) return original.call(this,message,writer);
+    if(message!==marker && message?.stickerMessage!==sticker) return original.call(this,message,writer);
     return original.call(this,{},writer).uint32(134*8+2).bytes(wrapper);
   }
   M.encode=special;
@@ -165,7 +166,7 @@ function createStickerHandler({owners,download,loadConfig,saveConfig,store,allow
        }catch{}
      }
      if(!permitted){await reply('⚠️ Solo el dueño o administrador del grupo puede cambiar esta función.');return true;}
-     if(command.arg==='on'&&getVersion()!=='6.7.7'){await reply('⚠️ Stickers con sonido requieren la versión de Baileys validada: 6.7.7. Consulta a la owner.');return true;}
+     if(command.arg==='on'&&!supportedVersion(getVersion())){await reply('⚠️ Stickers con sonido requieren la una versión de Baileys compatible: 6.7.7 o 6.7.24. Consulta a la owner.');return true;}
      const fresh=loadConfig();
      if(paused()||!groupEligible(jid,fresh)){await reply('⚠️ Función no disponible.');return true;}
      fresh.stickersGrupos={...fresh.stickersGrupos,[jid]:command.arg==='on'};
@@ -179,7 +180,7 @@ function createStickerHandler({owners,download,loadConfig,saveConfig,store,allow
    if(!video||video.viewOnce){await reply('Responde a un video normal con sonido (máximo 16 MB). Se usan los primeros 8 segundos.');return true;}
    if(Number(video.fileLength||0)>INPUT_LIMIT){await reply('⚠️ El video supera 16 MB.');return true;}
    if(busy){await reply('⏳ Hay otro sticker en proceso. Inténtalo nuevamente en unos segundos.');return true;}
-   if(getVersion()!=='6.7.7'){await reply('⚠️ Stickers con sonido no compatibles con la versión instalada de Baileys. Consulta a la owner.');return true;}
+   if(!supportedVersion(getVersion())){await reply('⚠️ Stickers con sonido no compatibles con la versión instalada de Baileys. Consulta a la owner.');return true;}
    busy=true;
    const stillAllowed=()=>!paused()&&(!group||groupEnabled(jid));
    // One conversion at a time, outside the shared order/payment queue.
