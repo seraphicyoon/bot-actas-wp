@@ -126,7 +126,10 @@ function createHelpHandler({store,owners,loadConfig,isHelper=()=>false,allowed=(
   if(!owner){await reply('⚠️ Solo la owner del bot puede cambiar el mantenimiento.');return true;}
   store.db.prepare("INSERT INTO bot_settings VALUES('paused',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(text==='/prendido'?'0':'1');await reply(text==='/prendido'?'✅ Bot reanudado.':'⚙️ Bot en mantenimiento. Para reanudar usa /prendido.');return true;
  }
- if(text==='.jinni'&&!owner){await reply('🔒 Menú exclusivo de la administración de Naevis. Escribe .ayuda para consultar tus comandos.');return true;}
+ if(text==='.jinni'){
+  const privateOwner=/@(s\.whatsapp\.net|lid)$/.test(chat||'')&&owners.includes(canonical(chat));
+  if(!privateOwner){await reply('🔒 Menú exclusivo de la administración de Naevis en privado. Escribe .ayuda para consultar tus comandos.');return true;}
+ }
  if(['.jinni','.ayuda','.ayudatienda','.comandos','.modo'].includes(text)){
   const config=loadConfig(),ctx=contextOf(store,chat,config);
   if(ctx.group&&ctx.mode!=='external'&&!allowed(chat)){await reply('🛑 Servicio sin renta activa.');return true;}

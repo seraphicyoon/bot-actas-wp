@@ -11,7 +11,7 @@ const PROC_ADMIN='🛠️ *ADMINISTRACIÓN DE TRÁMITES*\n/s cantidad y -s canti
 function makeMenus({ctx,role,ownerGuide,common,shopGuide,procedures,command='.ayuda'}){
  const owner=role==='owner',manager=['owner','groupOwner','admin'].includes(role),groupOwner=['owner','groupOwner'].includes(role),helper=role==='helper';
  if(ctx.mode==='private'){
-  if(owner)return [GENERAL,ADMIN,SHOP,SHOP_ADMIN,STOCK,PROC,PROC_ADMIN,ownerGuide];
+  if(owner&&command==='.jinni')return [GENERAL,ADMIN,SHOP,SHOP_ADMIN,STOCK,PROC,PROC_ADMIN,ownerGuide];
   return ['🌸 *NAEVIS — CHAT PRIVADO*\n.bienvenida — configurar tus grupos como propietario\n.grupos — tus aliases\n\nConsulta .ayuda en tu grupo para ver los comandos disponibles.'];
  }
  if(ctx.mode==='external')return [owner||manager?'🌸 *GRUPO SIN AUTORIZAR*\n/activar KEY — activa la renta como administrador.':'🌸 Este grupo no tiene un servicio de Naevis autorizado.'];
@@ -23,9 +23,8 @@ function makeMenus({ctx,role,ownerGuide,common,shopGuide,procedures,command='.ay
  if(ctx.mode==='tramites'){out.push(PROC);if(manager)out.push(groupOwner?PROC_ADMIN:PROC_ADMIN.split('\n').filter(l=>!l.startsWith('.actienda')).join('\n'));}
  if(ctx.mode==='legacy'){
   out.push('💬 *SIN MODO EXPLÍCITO*\nPuedes usar funciones generales sin activar tienda ni trámites. Para no interrumpir los grupos antiguos, los comandos de trámites anteriores conservan su funcionamiento; escribe .comandos para verlos.\n'+(manager?'.actienda alias — tienda\n.actram alias — trámites\n':''));
-  if(owner||command==='.comandos'){out.push(PROC);if(manager)out.push(PROC_ADMIN);}
+  if(command==='.comandos'){out.push(PROC);if(manager)out.push(PROC_ADMIN);}
  }
- if(owner)out.push(ownerGuide);
  return out;
 }
 function modeLabel(ctx){return ({private:'CHAT PRIVADO',external:'SIN AUTORIZAR',stock:'STOCK PRIVADO',tienda:'TIENDA',tramites:'TRÁMITES',legacy:'SIN MODO EXPLÍCITO (compatibilidad anterior)'})[ctx.mode];}
