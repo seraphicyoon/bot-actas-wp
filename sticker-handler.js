@@ -113,7 +113,7 @@ async function sendPilot(sock, jid, media, api, stillAllowed=()=>true) {
   }
   stickerMessage.width=media.side;stickerMessage.height=media.side;stickerMessage.isAnimated=true;
   if(!stillAllowed())throw Error('Función desactivada antes de enviar.');
-  const marker={stickerMessage}; // Baileys detects mediatype=sticker from this object.
+  const marker={stickerMessage,[Symbol.for('naevis.soundSticker')]:true}; // Baileys detects mediatype=sticker from this object.
   const restore=installOneMessageEncoder(proto,marker,stickerMessage,audioMessage);
   try { return await sock.relayMessage(jid,marker,{additionalAttributes:{type:'media'}}); }
   finally { restore(); }
@@ -122,10 +122,21 @@ async function sendPilot(sock, jid, media, api, stillAllowed=()=>true) {
 function parseCommand(text) {
   const [cmd,...args]=text.trim().toLowerCase().split(/\s+/);
   if(cmd==='.stickers')return {kind:'settings',arg:args.length===0?'status':args.length===1?args[0]:'invalid'};
+  if(cmd==='.ayudastickers'&&!args.length)return {kind:'settings',arg:'status'};
   if(cmd!=='/stickeraudio')return null;
   if(!args.length||args.length===1&&args[0]==='ajustar')return {kind:'video',mode:'pad'};
   if(args.length===1&&['recortar','rellenar','cuadrado'].includes(args[0]))return {kind:'video',mode:'crop'};
   return {kind:'invalid'};
+}
+function stickerGuide(state,admin=false) {
+ return '🌸 *NAEVIS • STICKERS CON SONIDO* 🌸\n\n'+
+   '*Estado:* '+state+'\n\n'+
+   '*¿Cómo crear uno?*\n1. Envía un video normal con sonido.\n2. Mantén presionado el video y elige Responder.\n3. Escribe uno de estos comandos:\n\n'+
+   '🔊 */stickeraudio*\nConserva todo el video con bordes transparentes si hacen falta.\n\n'+
+   '🖼️ */stickeraudio ajustar*\nIgual al modo anterior, sin recortar.\n\n'+
+   '✂️ */stickeraudio recortar*\nLlena el sticker cuadrado recortando lo que sobra. También acepta rellenar o cuadrado.\n\n'+
+   '📌 Máximo 16 MB; se utilizan los primeros 8 segundos. Toca el sticker para escuchar el audio.\n'+
+   (admin?'\n*Administración del grupo*\n.stickers on — activar\n.stickers off — desactivar\n':'\nSi está desactivado, solicita al administrador que lo habilite.\n');
 }
 function createStickerHandler({owners,download,loadConfig,saveConfig,store,allowed,paused,isHelper,
   convertVideo=convert,sendSticker=sendPilot,getApi=()=>require('@whiskeysockets/baileys'),
@@ -154,8 +165,8 @@ function createStickerHandler({owners,download,loadConfig,saveConfig,store,allow
    const config=group?loadConfig():null;
    if(group&&!groupEligible(jid,config)){await reply('⚠️ Stickers disponibles únicamente en grupos de ventas autorizados con renta activa.');return true;}
    if(command.kind==='settings'){
-     if(!group){await reply('En privado la owner puede usar /stickeraudio. Configura .stickers on/off dentro del grupo.');return true;}
-     if(command.arg==='status'){await reply('Stickers con sonido: '+(groupEnabled(jid)?'ACTIVADOS':'DESACTIVADOS'));return true;}
+     if(!group){await reply(command.arg==='status'?stickerGuide('DISPONIBLE EN PRIVADO'):'Configura .stickers on/off dentro del grupo.');return true;}
+     if(command.arg==='status'){await reply(stickerGuide(groupEnabled(jid)?'ACTIVADOS':'DESACTIVADOS',true));return true;}
      if(!['on','off'].includes(command.arg)){await reply('Usa .stickers on, .stickers off o .stickers.');return true;}
      const groupOwner=canonical(store.shop(jid)?.owner||config.propietariosGrupos?.[jid]);
      let permitted=owner||!!sender&&sender===groupOwner;
@@ -166,12 +177,12 @@ function createStickerHandler({owners,download,loadConfig,saveConfig,store,allow
        }catch{}
      }
      if(!permitted){await reply('⚠️ Solo el dueño o administrador del grupo puede cambiar esta función.');return true;}
-     if(command.arg==='on'&&!supportedVersion(getVersion())){await reply('⚠️ Stickers con sonido requieren la una versión de Baileys compatible: 6.7.7 o 6.7.24. Consulta a la owner.');return true;}
+     if(command.arg==='on'&&!supportedVersion(getVersion())){await reply('⚠️ Stickers con sonido requieren una versión de Baileys compatible: 6.7.7 o 6.7.24. Consulta a la owner.');return true;}
      const fresh=loadConfig();
      if(paused()||!groupEligible(jid,fresh)){await reply('⚠️ Función no disponible.');return true;}
      fresh.stickersGrupos={...fresh.stickersGrupos,[jid]:command.arg==='on'};
      saveConfig(fresh);
-     await reply(command.arg==='on'?'✅ Stickers con sonido activados. Responde a un video con /stickeraudio o /stickeraudio recortar.':'🔇 Stickers con sonido desactivados.');
+     await reply(command.arg==='on'?'✅ Stickers con sonido activados. Escribe .stickers para ver la guía.':'🔇 Stickers con sonido desactivados.');
      return true;
    }
    if(group&&!groupEnabled(jid)){await reply('🔇 Stickers con sonido desactivados. El dueño puede usar .stickers on.');return true;}
@@ -204,4 +215,4 @@ function createStickerHandler({owners,download,loadConfig,saveConfig,store,allow
  }
  return {handle};
 }
-module.exports={createStickerHandler,parseCommand,buildVideoFilter,addSoundExif,installOneMessageEncoder,convert,sendPilot};
+module.exports={createStickerHandler,parseCommand,buildVideoFilter,addSoundExif,installOneMessageEncoder,convert,sendPilot,stickerGuide};

@@ -17,9 +17,12 @@ El dueño y administradores también pueden moderar. No se puede expulsar o sile
 .kick — expulsa al miembro citado.
 El bot debe ser administrador. El silencio funciona mientras esté conectado.
 
-*Stickers con sonido*
-En grupos de ventas con renta activa: .stickers on / .stickers off (dueño/admin, no ayudantes). .stickers — consultar estado.
-Responde a un video normal con /stickeraudio o /stickeraudio ajustar para conservar el encuadre; /stickeraudio recortar (también rellenar o cuadrado) para llenar el cuadro. Máximo 16 MB y primeros 8 segundos. Se requiere habilitación del grupo y compatibilidad del servidor.
+*Stickers con sonido — Naevis*
+.stickers — menú de stickers para clientes y estado del grupo.
+/stickeraudio o /stickeraudio ajustar — conserva todo el video.
+/stickeraudio recortar (o rellenar/cuadrado) — llena el cuadro.
+.stickers on / .stickers off — activar/desactivar en grupos autorizados con renta activa (dueño/admin, no ayudantes).
+Máximo 16 MB; primeros 8 segundos. En privado solo owners.
 
 *Saldo y pago*
 .saldo o .versaldo — tu saldo en este grupo.
@@ -57,7 +60,7 @@ Texto, imagen o documento; máximo 16 MB. No admite una sola visualización. Se 
 /resolver ID entregado — confirma una entrega en revisión tras comprobar el privado.
 /resolver ID cancelar — devuelve saldo y stock SOLO tras comprobar que NO llegó.
 Si falla el envío, no se revende ni reembolsa automáticamente: queda en revisión. “Enviado” no significa leído.
-.ayudatienda, .comandos y .jinni — ayuda.
+.ayudatienda y .comandos — ayuda; .stickers — guía de stickers.
 Los comandos VIP, /priv, /auto y corte de trámites no se usan en tienda.`;
 const procedures=`📄 *MODO TRÁMITES*
 
@@ -111,9 +114,10 @@ function createHelpHandler({store,owners,loadConfig}){
   if(!owner){await reply('⚠️ Solo la owner del bot puede cambiar el mantenimiento.');return true;}
   store.db.prepare("INSERT INTO bot_settings VALUES('paused',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(text==='/prendido'?'0':'1');await reply(text==='/prendido'?'✅ Bot reanudado.':'⚙️ Bot en mantenimiento. Para reanudar usa /prendido.');return true;
  }
+ if(text==='.jinni'&&!owner){await reply('🔒 Menú exclusivo de la administración de Naevis. Para stickers escribe .stickers; para ayuda de tienda, .ayudatienda.');return true;}
  if(text==='.jinni'||text==='.ayudatienda'){
   await reply(common);const shop=store.shop(chat);await reply(shop?.mode==='tienda'?shopGuide:procedures);
-  if(owner)await reply(ownerGuide);else if(!chat.endsWith('@g.us'))await reply('Para usar el bot, añade al bot a tu grupo de ventas y activa la key que te entregue la owner con /activar KEY.');return true;
+  if(owner&&text==='.jinni')await reply(ownerGuide);else if(!chat.endsWith('@g.us'))await reply('Para usar el bot, añade al bot a tu grupo de ventas y activa la key que te entregue la owner con /activar KEY.');return true;
  }
  if(paused()) {if(text.startsWith('.')||text.startsWith('/')||text.startsWith('-s'))await reply('⚙️ Bot en mantenimiento. La owner debe usar /prendido.');return true;}
  return false;

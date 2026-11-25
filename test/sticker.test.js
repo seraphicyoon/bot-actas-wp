@@ -29,9 +29,11 @@ test('owner LID, opt-in group, admin permissions, suspended and maintenance',asy
  const send=async(jid,cmd,participant)=>{sent.length=0;return h.handle(sock,{key:{remoteJid:jid,participant},message:{conversation:cmd}})};
  assert.equal(await send('111@s.whatsapp.net','/stickeraudio'),false);
  assert.equal(await send(owner,'/stickeraudio'),true);assert.match(sent[0],/Responde/);
+ await send(group,'.stickers','111@s.whatsapp.net');assert.match(sent[0],/DESACTIVADOS/);assert.match(sent[0],/\/stickeraudio recortar/);
  await send(group,'/stickeraudio','111@s.whatsapp.net');assert.match(sent[0],/desactivados/);
  await send(group,'.stickers on','111@s.whatsapp.net');assert.match(sent[0],/Solo/);
  await send(group,'.stickers on',owner);assert.equal(config.stickersGrupos[group],true);
+ await send(group,'.ayudastickers','111@s.whatsapp.net');assert.match(sent[0],/ACTIVADOS/);
  await send(group,'/stickeraudio recortar','111@s.whatsapp.net');assert.match(sent[0],/Responde/);
  active=false;await send(group,'/stickeraudio',owner);assert.match(sent[0],/renta activa/);
  active=true;maintenance=true;await send(group,'/stickeraudio',owner);assert.match(sent[0],/mantenimiento/);
