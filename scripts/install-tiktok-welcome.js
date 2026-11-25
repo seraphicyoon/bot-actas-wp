@@ -15,7 +15,7 @@ function patchIndex(s){
 function patchHelp(s){
  const a="*Saldo y pago*\n";
  if(s.split(a).length!==2)throw Error("No coincide menú local.");
- return s.replace(a,()=>"*Anuncios generales*\n.n Texto — anuncio con menciones en cualquier grupo autorizado con renta activa, sin necesidad de modo tienda o trámites (dueño/admin; no ayudantes). Admite imagen o video de hasta 16 MB.\n\n*TikTok y bienvenidas*\n.tiktok / .ayudatiktok — guía y estado en el grupo.\n.tiktok on/off — dueño o admin activa/desactiva descargas.\n.bienvenida — por privado, dueño registrado del grupo u owner: lista, vista previa y personalización por alias.\n.bienvenida alias texto Tu mensaje con {usuario} — guarda y activa.\n.bienvenida alias ver/on/off/reset — consulta o cambia bienvenida.\n\n"+a);
+ return s.replace(a,()=>"*Anuncios generales*\n.n Texto — anuncio con menciones en cualquier grupo autorizado con renta activa, sin necesidad de modo tienda o trámites (dueño/admin; no ayudantes). Admite imagen o video de hasta 16 MB.\n\n*Videos y bienvenidas*\n.videos / .ayudavideos — guía y estado de descargas (TikTok, Instagram, YouTube, Facebook, X, Pinterest, Reddit y Vimeo, según disponibilidad).\n.videos on/off — dueño o admin activa/desactiva todas las plataformas. Los comandos anteriores de TikTok siguen funcionando.\n.bienvenida — por privado, dueño registrado del grupo u owner: lista, vista previa y personalización por alias.\n.bienvenida alias texto Tu mensaje con {usuario} — guarda y activa.\n.bienvenida alias ver/on/off/reset — consulta o cambia bienvenida.\n\n"+a);
 }
 
 try{

@@ -27,9 +27,9 @@ Máximo 16 MB; primeros 8 segundos. En privado solo owners.
 *Anuncios generales*
 .n Texto — anuncio con menciones en cualquier grupo autorizado con renta activa, sin necesidad de modo tienda o trámites (dueño/admin; no ayudantes). Admite imagen o video de hasta 16 MB.
 
-*TikTok y bienvenidas*
-.tiktok / .ayudatiktok — guía y estado en el grupo.
-.tiktok on/off — dueño o admin activa/desactiva descargas.
+*Videos y bienvenidas*
+.videos / .ayudavideos — guía y estado de descargas (TikTok, Instagram, YouTube, Facebook, X, Pinterest, Reddit y Vimeo, según disponibilidad).
+.videos on/off — dueño o admin activa/desactiva todas las plataformas. Los comandos anteriores de TikTok siguen funcionando.
 .bienvenida — por privado, dueño registrado del grupo u owner: lista, vista previa y personalización por alias.
 .bienvenida alias texto Tu mensaje con {usuario} — guarda y activa.
 .bienvenida alias ver/on/off/reset — consulta o cambia bienvenida.
