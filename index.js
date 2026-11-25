@@ -15,6 +15,7 @@ const {createNameHandler} = require('./name-handler');
 const {createStickerHandler} = require('./sticker-handler');
 const {createTikTokHandler} = require('./tiktok-handler');
 const {createWelcomeHandler} = require('./welcome-handler');
+const {createAnnouncementHandler} = require('./announcement-handler');
 
 process.on('unhandledRejection', (reason) => { console.log('⚠️ Error bloqueado:', reason); });
 
@@ -71,6 +72,7 @@ const nombres = createNameHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS,
 const stickers = createStickerHandler({owners: SÚPER_ADMINS_NATOS, download: downloadContentFromMessage, loadConfig: cargarConfig, saveConfig: guardarConfig, store: tiendaDB, allowed: rentas.allowed, paused: ayuda.paused, isHelper: moderacion.isHelper});
 const tiktok = createTikTokHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, allowed: rentas.allowed, paused: ayuda.paused, isHelper: moderacion.isHelper});
 const bienvenida = createWelcomeHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, allowed: rentas.allowed, paused: ayuda.paused});
+const anuncios = createAnnouncementHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, allowed: rentas.allowed, paused: ayuda.paused, isHelper: moderacion.isHelper, download: downloadContentFromMessage});
 let colaMensajes = Promise.resolve();
 let relojRentas;
 
@@ -143,6 +145,7 @@ async function iniciarBot() {
         if (await stickers.handle(sock, msg)) return;
         if (await bienvenida.handle(sock, msg)) return;
         if (await tiktok.handle(sock, msg)) return;
+        if (await anuncios.handle(sock, msg)) return;
         if (await nombres.handle(sock, msg)) return;
         if (await tiendas.handle(sock, msg)) return;
 

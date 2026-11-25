@@ -24,6 +24,9 @@ El bot debe ser administrador. El silencio funciona mientras esté conectado.
 .stickers on / .stickers off — activar/desactivar en grupos autorizados con renta activa (dueño/admin, no ayudantes).
 Máximo 16 MB; primeros 8 segundos. En privado solo owners.
 
+*Anuncios generales*
+.n Texto — anuncio con menciones en cualquier grupo autorizado con renta activa, sin necesidad de modo tienda o trámites (dueño/admin; no ayudantes). Admite imagen o video de hasta 16 MB.
+
 *TikTok y bienvenidas*
 .tiktok / .ayudatiktok — guía y estado en el grupo.
 .tiktok on/off — dueño o admin activa/desactiva descargas.
