@@ -21,11 +21,19 @@ test('new commands share existing group setting, preserve permissions and async 
  active=false;await send(a,'https://youtu.be/abcdefghijk');assert.equal(count,1);active=true;paused=true;await send(a,'https://youtu.be/abcdefghijk');assert.equal(count,1);
 });
 
-test('unknown metadata duration allowed, actual file duration enforced',()=>{
- assert.ok(downloadArgs('https://www.instagram.com/reels/DgHynC-opX_/','test.mp4').includes('!is_live & duration <=? 90'));
+test('no duration cap, 50 MiB size filters and lower quality',()=>{
+ const url='https://x.com/Gaspar_Sparco/status/2125457974357643555';
+ const args=downloadArgs(url,'test.mp4',360);
+ assert.ok(args.includes('!is_live'));
+ assert.ok(args.includes('50M'));
+ assert.ok(!args.some(x=>x.includes('duration <=')));
+ const format=args[args.indexOf('-f')+1];
+ assert.ok(format.includes('[height<=?360]'));
+ assert.ok(format.includes('[filesize_approx<=?50M]'));
+ assert.ok(format.includes('[filesize_approx<=?40M]'));
+ assert.ok(format.includes('[filesize_approx<=?10M]'));
  const probe=(duration,codec_type='video')=>JSON.stringify({format:{duration},streams:[{codec_type}]});
- assert.doesNotThrow(()=>validateProbe(probe('12.5')));
- assert.doesNotThrow(()=>validateProbe(probe('90')));
- for(const d of ['90.1','N/A',null,0,-1])assert.throws(()=>validateProbe(probe(d)));
+ for(const d of ['12.5','90','305.171','1200'])assert.doesNotThrow(()=>validateProbe(probe(d)));
+ for(const d of ['N/A',null,0,-1])assert.throws(()=>validateProbe(probe(d)));
  assert.throws(()=>validateProbe(probe('12','audio')));
 });
