@@ -1,0 +1,6 @@
+# Stickers con sonido
+Integración basada en el piloto probado en Windows con Baileys 6.7.7. No modifica la conexión, sesiones, versiones de dependencias, tablas ni datos existentes. Requiere ffmpeg y ffprobe con libwebp_anim y libopus en el PATH del proceso. Comprobar la versión instalada con node -p "require('@whiskeysockets/baileys/package.json').version". Si no es 6.7.7, el módulo no envía stickers; no degradar ni actualizar Baileys en producción sin pruebas separadas.
+
+En privado solo owners; en grupos de ventas autorizados con renta activa, el dueño o admin (no ayudante) usa .stickers on/off. Estado con .stickers. Desactivado por defecto. /stickeraudio [ajustar|recortar|rellenar|cuadrado] como respuesta a video normal con audio. 16 MB de entrada; primeros 8 segundos. Un trabajo global simultáneo, sin bloquear la cola de trámites. Sin mensajes extra cuando el envío tiene éxito. Requiere que el cliente de WhatsApp reproduzca stickers con sonido. Protocolo no oficial sujeto a cambios. El envío por grupo todavía requiere prueba real.
+
+Antes del despliegue respaldar datos persistentes y código; no sobrescribir config.json, saldos.json, SQLite ni sesión. No es necesario reinstalar dependencias si ya están instaladas. Ejecutar npm test. Para apagar un grupo, .stickers off. Copia de código original: backup/pre-stickers-sonido-20261124.

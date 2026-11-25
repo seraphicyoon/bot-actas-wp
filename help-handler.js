@@ -17,6 +17,10 @@ El dueño y administradores también pueden moderar. No se puede expulsar o sile
 .kick — expulsa al miembro citado.
 El bot debe ser administrador. El silencio funciona mientras esté conectado.
 
+*Stickers con sonido*
+En grupos de ventas con renta activa: .stickers on / .stickers off (dueño/admin, no ayudantes). .stickers — consultar estado.
+Responde a un video normal con /stickeraudio o /stickeraudio ajustar para conservar el encuadre; /stickeraudio recortar (también rellenar o cuadrado) para llenar el cuadro. Máximo 16 MB y primeros 8 segundos. Se requiere habilitación del grupo y compatibilidad del servidor.
+
 *Saldo y pago*
 .saldo o .versaldo — tu saldo en este grupo.
 /s 100 — suma saldo al cliente citado (dueño, admin o ayudante).
@@ -86,7 +90,7 @@ Los pedidos requieren proveedor y precios configurados. La entrega depende de es
 .grupos — aliases del dueño/owner.
 /activargrupo y /desactivargrupo — activa/desactiva el grupo autorizado. No sustituyen la key de renta.
 Los comandos .receta, .cescolar y .cmedico no están implementados; no se anuncian como disponibles.`;
-const ownerGuide=`👑 *OWNER DEL BOT — PRIVADO*\n/avisos — recupera los avisos pendientes de /nombre en tu privado SIN volver a cobrar.
+const ownerGuide=`👑 *OWNER DEL BOT — PRIVADO*\n/stickeraudio ajustar o recortar — responde a un video con sonido; también disponible en privado para la owner.\n/avisos — recupera los avisos pendientes de /nombre en tu privado SIN volver a cobrar.
 Escribe .jinni al privado desde tu número principal para registrar el chat donde recibirás los avisos.\n/r ID — responde al resultado para entregarlo al privado del cliente de una búsqueda /nombre.
 /rechazar — responde al aviso de búsqueda, o usa /rechazar ID; devuelve $10 una sola vez y avisa al cliente.
 /genkey 1 dia / /genkey 7 dias / /genkey 12 horas — key de un uso; de 1 minuto a 366 días.

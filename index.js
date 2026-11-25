@@ -12,6 +12,7 @@ const { createModerationHandler } = require('./moderation-handler');
 const { createHelpHandler } = require('./help-handler');
 const {normalizeMessage} = require('./message-utils');
 const {createNameHandler} = require('./name-handler');
+const {createStickerHandler} = require('./sticker-handler');
 
 process.on('unhandledRejection', (reason) => { console.log('⚠️ Error bloqueado:', reason); });
 
@@ -65,6 +66,7 @@ const tiendas = createShopHandler({ store: tiendaDB, loadConfig: cargarConfig, s
 const rentas = createRentalHandler({ store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, saveConfig: guardarConfig });
 const ayuda = createHelpHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig});
 const nombres = createNameHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, loadBalances: cargarSaldos, saveBalances: guardarSaldos, allowed: rentas.allowed});
+const stickers = createStickerHandler({owners: SÚPER_ADMINS_NATOS, download: downloadContentFromMessage, loadConfig: cargarConfig, saveConfig: guardarConfig, store: tiendaDB, allowed: rentas.allowed, paused: ayuda.paused, isHelper: moderacion.isHelper});
 let colaMensajes = Promise.resolve();
 let relojRentas;
 
@@ -147,6 +149,7 @@ async function iniciarBot() {
         if (await rentas.handle(sock, msg)) return;
         if (await moderacion.handle(sock, msg)) return;
         if (await ayuda.handle(sock, msg)) return;
+        if (await stickers.handle(sock, msg)) return;
         if (await nombres.handle(sock, msg)) return;
         if (await tiendas.handle(sock, msg)) return;
 
