@@ -124,8 +124,11 @@ async function iniciarBot() {
             if (update.announce !== undefined) {
                 setTimeout(async () => {
                     try {
-                        if (update.announce) await sock.sendMessage(update.id, { text: '🔒 *LA TIENDA HA CERRADO* 🔒\nPor el momento los administradores han pausado los pedidos.' });
-                        else await sock.sendMessage(update.id, { text: '🔓 *¡LA TIENDA ESTÁ ABIERTA!* 🔓\nEl grupo está disponible nuevamente.' });
+                        if (!cargarConfig().gruposAutorizados.includes(update.id) || ayuda.paused() || !rentas.allowed(update.id)) return;
+                        const modoActual = tiendaDB.shop(update.id)?.mode;
+                        const ventas = modoActual === 'tienda' || modoActual === 'tramites';
+                        const textoEstado = update.announce ? (ventas ? '🔒 *PEDIDOS PAUSADOS*\nSolo los administradores pueden enviar mensajes.' : '🔒 *GRUPO CERRADO*\nSolo los administradores pueden enviar mensajes.') : (ventas ? '🔓 *PEDIDOS ABIERTOS*\nEl grupo está disponible nuevamente.' : '🔓 *GRUPO ABIERTO*\nTodos los miembros pueden participar.');
+                        await sock.sendMessage(update.id, { text: textoEstado });
                     } catch (e) {}
                 }, 2000);
             }

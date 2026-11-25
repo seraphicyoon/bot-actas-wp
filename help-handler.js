@@ -132,7 +132,7 @@ function createHelpHandler({store,owners,loadConfig,isHelper=()=>false,allowed=(
   if(ctx.group&&ctx.mode!=='external'&&!allowed(chat)){await reply('🛑 Servicio sin renta activa.');return true;}
   const role=await roleOf({sock,msg,ctx,owners,config,isHelper});
   if(text==='.modo'){await reply('🌸 Modo actual: '+modeLabel(ctx));return true;}
-  const sections=makeMenus({ctx,role,ownerGuide,common,shopGuide,procedures});
+  const sections=makeMenus({ctx,role,ownerGuide,common,shopGuide,procedures,command:text});
   for(const section of sections)await reply(section);
   return true;
  }

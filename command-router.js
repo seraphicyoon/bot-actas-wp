@@ -62,14 +62,14 @@ function createRouter({store,owners,loadConfig,rentas,moderacion,ayuda,stickers,
   if(category==='general'&&['.abrir','.cerrar'].includes(command)&&ctx.group){
    if(!ctx.authorized||ctx.mode==='stock'||!rentas.allowed(chat)){await reply('⚠️ Este comando requiere un grupo autorizado y activo.');return true;}
    const role=await roleOf({sock,msg,ctx,owners,config:cfg,isHelper:moderacion.isHelper});
-   if(!managers.includes(role)){await reply('⚠️ Solo el dueño o administrador puede abrir o cerrar el grupo.');return true;}
+   if(!managers.includes(role)&&!cfg.superAdmins?.includes(canonical(msg.key.participant))){await reply('⚠️ Solo el dueño o administrador puede abrir o cerrar el grupo.');return true;}
    if(text.toLowerCase()!==command){await reply('Usa '+command+' sin argumentos.');return true;}
    try{await sock.groupSettingUpdate(chat,command==='.cerrar'?'announcement':'not_announcement');await reply(command==='.cerrar'?'🔒 Grupo cerrado.':'🔓 Grupo abierto.');}
    catch{await reply('⚠️ No pude cambiar el grupo. Verifica que el bot sea administrador.');}
    return true;
   }
   if(command==='.grupos'){
-   const sender=canonical(msg.key.participant||chat),global=owners.includes(sender);
+   const sender=canonical(msg.key.participant||chat),global=owners.includes(sender)||cfg.superAdmins?.includes(sender);
    const entries=Object.entries(cfg.gruposDestino||{}).filter(([,id])=>global||!!sender&&sender===canonical(store.shop(id)?.owner||cfg.propietariosGrupos?.[id]));
    await reply(entries.length?'📂 *TUS GRUPOS*\n\n'+entries.map(([alias,id])=>alias+' — '+contextOf(store,id,cfg).mode).join('\n'):'No tienes grupos registrados con alias.');return true;
   }
