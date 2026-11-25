@@ -17,6 +17,7 @@ const {createTikTokHandler} = require('./tiktok-handler');
 const {createWelcomeHandler} = require('./welcome-handler');
 const {createAnnouncementHandler} = require('./announcement-handler');
 const {createRouter} = require('./command-router');
+const {createProviderHandler} = require('./provider-handler');
 
 process.on('unhandledRejection', (reason) => { console.log('⚠️ Error bloqueado:', reason); });
 
@@ -74,7 +75,8 @@ const stickers = createStickerHandler({owners: SÚPER_ADMINS_NATOS, download: do
 const tiktok = createTikTokHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, allowed: rentas.allowed, paused: ayuda.paused, isHelper: moderacion.isHelper});
 const bienvenida = createWelcomeHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, allowed: rentas.allowed, paused: ayuda.paused});
 const anuncios = createAnnouncementHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, allowed: rentas.allowed, paused: ayuda.paused, isHelper: moderacion.isHelper, download: downloadContentFromMessage});
-const router = createRouter({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, rentas, moderacion, ayuda, stickers, tiktok, bienvenida, anuncios, nombres, tiendas});
+const proveedores = createProviderHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, saveConfig: guardarConfig, allowed: rentas.allowed});
+const router = createRouter({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, rentas, moderacion, ayuda, stickers, tiktok, bienvenida, anuncios, nombres, tiendas, proveedores});
 let colaMensajes = Promise.resolve();
 let relojRentas;
 
@@ -771,19 +773,6 @@ Consulta .jinni para administrar el grupo.`;
             configSistema.gruposDestino[args[1].toLowerCase()] = chatId; guardarConfig(configSistema); await responder(`✅ *Enlace Exitoso!* Alias: *${args[1].toLowerCase()}*`); return;
         }
 
-        if (textoMensaje.toLowerCase().startsWith('/setproveedor ') && tienePermisoOperativo && esGrupo) {
-            const alias = textoMensaje.split(' ')[1]?.toLowerCase();
-            if (!alias) return await responder('⚠️ Escribe el alias de tu grupo de ventas.');
-            const idVentas = configSistema.gruposDestino[alias];
-            if (!idVentas) return await responder(`⚠️ El alias *${alias}* no existe.`);
-            if (!deMiNumero && configSistema.propietariosGrupos[idVentas] !== senderViejo) return await responder('⚠️ Solo el dueño de esas ventas puede vincular el proveedor.');
-            configSistema.gruposProveedores = configSistema.gruposProveedores || {};
-            configSistema.gruposProveedores[idVentas] = chatId;
-            guardarConfig(configSistema);
-            await responder(`✅ *Proveedor Vinculado Exitósamente*`);
-            return;
-        }
-
         if (textoMensaje.toLowerCase().startsWith('/precio ') && tienePermisoOperativo && esGrupo) {
             const args = textoMensaje.split(/\s+/); if (args.length !== 3) return await responder("⚠️ Usa /precio servicio cantidad (número entero positivo).");
             let tipoServicio = args[1].toLowerCase(); const nuevoPrecio = Number(args[2]); if (!Number.isSafeInteger(nuevoPrecio) || nuevoPrecio < 1) return await responder("⚠️ El precio debe ser un número entero positivo.");
@@ -1033,7 +1022,7 @@ Consulta .jinni para administrar el grupo.`;
                         for (const destId of destinatarios) { try { await sock.sendMessage(toBaileys(destId), { text: alerta }); } catch (err) {} }
 
                         if (configSistema.autoMode && configSistema.autoMode[chatId]) {
-                            if (configSistema.gruposProveedores && configSistema.gruposProveedores[chatId] && (tramite.nombreServicio.startsWith('Acta') || tramite.nombreServicio.includes('Clon'))) {
+                            if (configSistema.proveedorModo?.[chatId] !== 'manual' && configSistema.gruposProveedores && configSistema.gruposProveedores[chatId] && (tramite.nombreServicio.startsWith('Acta') || tramite.nombreServicio.includes('Clon'))) {
                                 try { 
                                     await sock.sendMessage(configSistema.gruposProveedores[chatId], { text: tramite.lineaOriginal }); 
                                     configSistema.pendientes[tramite.identificador] = { grupoVentas: chatId, cliente: senderViejo, costo: tramite.costo };
@@ -1079,7 +1068,7 @@ Consulta .jinni para administrar el grupo.`;
                             for (const destId of destinatarios) { try { await sock.sendMessage(toBaileys(destId), { text: alerta }); } catch (err) {} }
 
                             if (configSistema.autoMode && configSistema.autoMode[chatId]) {
-                                if (configSistema.gruposProveedores && configSistema.gruposProveedores[chatId] && (tramite.nombreServicio.startsWith('Acta') || tramite.nombreServicio.includes('Clon'))) {
+                                if (configSistema.proveedorModo?.[chatId] !== 'manual' && configSistema.gruposProveedores && configSistema.gruposProveedores[chatId] && (tramite.nombreServicio.startsWith('Acta') || tramite.nombreServicio.includes('Clon'))) {
                                     try { 
                                         await sock.sendMessage(configSistema.gruposProveedores[chatId], { text: tramite.lineaOriginal }); 
                                         configSistema.pendientes[tramite.identificador] = { grupoVentas: chatId, cliente: senderViejo, costo: tramite.costo };
