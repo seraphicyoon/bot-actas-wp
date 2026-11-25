@@ -13,6 +13,8 @@ const { createHelpHandler } = require('./help-handler');
 const {normalizeMessage} = require('./message-utils');
 const {createNameHandler} = require('./name-handler');
 const {createStickerHandler} = require('./sticker-handler');
+const {createTikTokHandler} = require('./tiktok-handler');
+const {createWelcomeHandler} = require('./welcome-handler');
 
 process.on('unhandledRejection', (reason) => { console.log('⚠️ Error bloqueado:', reason); });
 
@@ -67,6 +69,8 @@ const rentas = createRentalHandler({ store: tiendaDB, owners: SÚPER_ADMINS_NATO
 const ayuda = createHelpHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig});
 const nombres = createNameHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, loadBalances: cargarSaldos, saveBalances: guardarSaldos, allowed: rentas.allowed});
 const stickers = createStickerHandler({owners: SÚPER_ADMINS_NATOS, download: downloadContentFromMessage, loadConfig: cargarConfig, saveConfig: guardarConfig, store: tiendaDB, allowed: rentas.allowed, paused: ayuda.paused, isHelper: moderacion.isHelper});
+const tiktok = createTikTokHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, allowed: rentas.allowed, paused: ayuda.paused, isHelper: moderacion.isHelper});
+const bienvenida = createWelcomeHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, allowed: rentas.allowed, paused: ayuda.paused});
 let colaMensajes = Promise.resolve();
 let relojRentas;
 
@@ -107,20 +111,7 @@ async function iniciarBot() {
     });
 
     // SISTEMA DE BIENVENIDA (MARCA BLANCA / NEUTRA)
-    sock.ev.on('group-participants.update', async (evento) => {
-        let config = cargarConfig();
-        const chatId = evento.id;
-        if (!config.gruposAutorizados.includes(chatId) || ayuda.paused() || !rentas.allowed(chatId)) return;
-        
-        if (evento.action === 'add') {
-            for (const participante of evento.participants) {
-                try {
-                    const textoBienvenida = `👋 ¡Bienvenido/a al grupo! 🌸\n\n@${participante.split('@')[0]}, nos da gusto tenerte aquí.\n\n📖 Para aprender a pedir escribe: *.comandos*\n📋 Para ver lo que vendemos: *.tramites*\n💳 Para ver nuestras cuentas: *.pago*\n\n¡Cualquier duda, etiqueta a un administrador! ✨`;
-                    await sock.sendMessage(chatId, { text: textoBienvenida, mentions: [participante] });
-                } catch(e) {}
-            }
-        }
-    });
+    sock.ev.on('group-participants.update', evento => { void bienvenida.onJoin(sock,evento).catch(e=>console.error('[BIENVENIDA]',e.code||e.name)); });
 
     sock.ev.on('groups.update', async (updates) => {
         let config = cargarConfig();
@@ -150,6 +141,8 @@ async function iniciarBot() {
         if (await moderacion.handle(sock, msg)) return;
         if (await ayuda.handle(sock, msg)) return;
         if (await stickers.handle(sock, msg)) return;
+        if (await bienvenida.handle(sock, msg)) return;
+        if (await tiktok.handle(sock, msg)) return;
         if (await nombres.handle(sock, msg)) return;
         if (await tiendas.handle(sock, msg)) return;
 

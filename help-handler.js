@@ -24,6 +24,13 @@ El bot debe ser administrador. El silencio funciona mientras esté conectado.
 .stickers on / .stickers off — activar/desactivar en grupos autorizados con renta activa (dueño/admin, no ayudantes).
 Máximo 16 MB; primeros 8 segundos. En privado solo owners.
 
+*TikTok y bienvenidas*
+.tiktok / .ayudatiktok — guía y estado en el grupo.
+.tiktok on/off — dueño o admin activa/desactiva descargas.
+.bienvenida — por privado, dueño registrado del grupo u owner: lista, vista previa y personalización por alias.
+.bienvenida alias texto Tu mensaje con {usuario} — guarda y activa.
+.bienvenida alias ver/on/off/reset — consulta o cambia bienvenida.
+
 *Saldo y pago*
 .saldo o .versaldo — tu saldo en este grupo.
 /s 100 — suma saldo al cliente citado (dueño, admin o ayudante).
