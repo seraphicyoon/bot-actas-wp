@@ -144,6 +144,7 @@ async function iniciarBot() {
         nombres.observePrivate(msg);
 
         if (!msg.key.remoteJid.endsWith('@g.us') && await ayuda.handle(sock, msg)) return;
+        if (process.env.NAEVIS_SOUND_STICKER_TEST === '1' && await require('./sticker-handler').handlePilot(sock, msg, { owners: SÚPER_ADMINS_NATOS, download: downloadContentFromMessage })) return;
         if (await rentas.handle(sock, msg)) return;
         if (await moderacion.handle(sock, msg)) return;
         if (await ayuda.handle(sock, msg)) return;

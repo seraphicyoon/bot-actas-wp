@@ -1,0 +1,8 @@
+# Piloto de stickers con sonido — NO desplegar en producción
+Este cambio es independiente, se activa solo con NAEVIS_SOUND_STICKER_TEST=1 y únicamente acepta /stickeraudio en un chat privado con una cuenta propietaria ya configurada. No activa comandos para clientes ni grupos. No modifica dependencias, datos de tienda, saldos ni rentas. Implementación independiente basada en la descripción pública del formato, sin copiar el código de la extensión.
+
+Primero usar un clon separado, una cuenta de WhatsApp de prueba, su propio directorio de datos y un puerto diferente. Nunca reutilizar ni copiar las credenciales de producción. Requiere FFmpeg y FFprobe con libwebp_anim y libopus. El manifiesto actual permite varias versiones 6.7.x; el piloto rechaza cualquier versión distinta de 6.7.7, cuyo código se inspeccionó. No cambiar la versión del bot activo. En un clon desechable se puede instalar específicamente 6.7.7 y ejecutar npm test antes de iniciar.
+
+Enviar un video normal de máximo 16 MB desde la cuenta propietaria al bot de prueba con /stickeraudio en el pie, o responder a un video con el comando. Solo los primeros ocho segundos. El piloto no reenvía ni reintenta. Confirmar manualmente en WhatsApp móvil que se ve y se escucha; el ID de envío no prueba reproducción. Puede haber rechazo de servidor, pérdida de campos, falta de habilitación de la función o cambios de protocolo. No hay prueba real de envío todavía. No fusionar hasta probar con una cuenta aparte.
+
+Pruebas: npm test. Para deshabilitar, quitar la variable de entorno y reiniciar SOLO el proceso de pruebas. Main permanece intacto. Los comandos de imagen/GIF con audio y activación por grupo se posponen hasta verificar el envío real.
