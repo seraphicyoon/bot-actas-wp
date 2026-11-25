@@ -11,7 +11,7 @@ function patchHelp(s){
 try{
  const ref=process.argv[2]||'FETCH_HEAD';
  const get=f=>cp.execFileSync('git',['show',ref+':'+f],{encoding:'utf8'});
- const previous=['cd7a79f94536a5c13566aa3e4feac1d12fb0dcad','391dcd59dc46b11e94f3d54f64888f8317b30ba6','d396052fe86ec7f31f6680721637f235e5f3679a'].map(sha=>cp.execFileSync('git',['show',sha+':tiktok-handler.js'],{encoding:'utf8'}));
+ const previous=['cd7a79f94536a5c13566aa3e4feac1d12fb0dcad','391dcd59dc46b11e94f3d54f64888f8317b30ba6','d396052fe86ec7f31f6680721637f235e5f3679a','6a31d27b17f26e6a723113282b0c54139769b499'].map(sha=>cp.execFileSync('git',['show',sha+':tiktok-handler.js'],{encoding:'utf8'}));
  const current=fs.readFileSync('tiktok-handler.js','utf8');
  const normalize=s=>s.replace(/\r\n/g,'\n').trimEnd();
  const next=get('tiktok-handler.js');

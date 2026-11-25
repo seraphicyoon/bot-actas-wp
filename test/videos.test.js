@@ -28,7 +28,8 @@ test('no duration cap, 50 MiB size filters and lower quality',()=>{
  assert.ok(args.includes('50M'));
  assert.ok(!args.some(x=>x.includes('duration <=')));
  const format=args[args.indexOf('-f')+1];
- assert.ok(format.includes('[height<=?360]'));
+ assert.ok(format.includes('[height<=360]'));
+ assert.ok(format.includes('[width<=360]'));
  assert.ok(format.includes('[filesize_approx<=?50M]'));
  assert.ok(format.includes('[filesize_approx<=?40M]'));
  assert.ok(format.includes('[filesize_approx<=?10M]'));
@@ -36,4 +37,16 @@ test('no duration cap, 50 MiB size filters and lower quality',()=>{
  for(const d of ['12.5','90','305.171','1200'])assert.doesNotThrow(()=>validateProbe(probe(d)));
  for(const d of ['N/A',null,0,-1])assert.throws(()=>validateProbe(probe(d)));
  assert.throws(()=>validateProbe(probe('12','audio')));
+});
+
+test('vertical TikTok has no fixed height cap in first attempt',()=>{
+ const url='https://vt.tiktok.com/ZSs6p7JHN/';
+ const args=downloadArgs(url,'test.mp4');
+ const format=args[args.indexOf('-f')+1];
+ assert.ok(!format.includes('[height')&&!format.includes('[width'));
+ assert.ok(format.includes('format_note!*=watermarked'));
+ assert.ok(args.includes('vcodec:h264,res'));
+ const fallback=downloadArgs(url,'test.mp4',720);
+ const f=fallback[fallback.indexOf('-f')+1];
+ assert.ok(f.includes('[height<=720]')&&f.includes('[width<=720]'));
 });

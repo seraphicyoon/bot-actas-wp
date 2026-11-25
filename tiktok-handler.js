@@ -27,16 +27,20 @@ function identify(text){
  return null;
 }
 function extractLink(text){return identify(text)?.url||null;}
-function downloadArgs(url,out,height=720){
+function downloadArgs(url,out,shortSide=null){
  const site=identify(url);
  if(!site||site.url!==url)throw Error('URL inválida');
  const size='[filesize<=?50M][filesize_approx<=?50M]';
- const combined='[ext=mp4][height<=?'+height+']'+size;
- const video='[ext=mp4][height<=?'+height+'][filesize<=?40M][filesize_approx<=?40M]';
+ const videoSize='[filesize<=?40M][filesize_approx<=?40M]';
  const audio='[filesize<=?10M][filesize_approx<=?10M]';
- const pair='bv'+video+'+(ba[ext=m4a]'+audio+'/ba[ext=mp4]'+audio+')';
- const format=(site.name==='TikTok'?'b'+combined+'[format_note!*=watermarked]/':'')+'b'+combined+'/'+pair;
- return ['--ignore-config','--no-cache-dir','--no-playlist','--playlist-items','1','--use-extractors',site.extractors,'--socket-timeout','10','--retries','1','--extractor-retries','1','--max-filesize','50M','--match-filters','!is_live','-f',format,'--merge-output-format','mp4','--no-progress','-o',out,'--',url];
+ // First try any dimensions. Fallbacks accept either orientation by bounding the shorter side.
+ const dims=shortSide===null?['']:['[height<='+shortSide+']','[width<='+shortSide+']'];
+ const choices=(kind,filters)=>dims.map(d=>kind+'[ext=mp4]'+d+filters).join('/');
+ const best=choices('b',size),split=choices('bv',videoSize);
+ const pair='('+split+')+(ba[ext=m4a]'+audio+'/ba[ext=mp4]'+audio+')';
+ const clean='[format_note!*=watermarked]';
+ const format=(site.name==='TikTok'?choices('b',size+clean)+'/'+choices('b',size+clean.replace('!*=','!*=?'))+'/':'')+best+'/'+pair;
+ return ['--ignore-config','--no-cache-dir','--no-playlist','--playlist-items','1','--use-extractors',site.extractors,'--socket-timeout','10','--retries','1','--extractor-retries','1','--max-filesize','50M','--match-filters','!is_live','-f',format,'-S','vcodec:h264,res','--merge-output-format','mp4','--no-progress','-o',out,'--',url];
 }
 function validateProbe(stdout){
  const info=JSON.parse(stdout),duration=Number(info.format?.duration);
@@ -49,7 +53,7 @@ async function download(url){
  const opts=()=>{const remaining=deadline-Date.now();if(remaining<=0)throw Object.assign(Error('Tiempo de descarga agotado.'),{code:'VIDEO_TIMEOUT'});return {timeout:remaining,maxBuffer:128*1024,windowsHide:true};};
  try{
   let lastError;
-  for(const height of [720,480,360,270,240,144]){
+  for(const height of [null,1080,720,480,360,240,144]){
    const folder=path.join(dir,String(height));await fs.mkdir(folder);
    const out=path.join(folder,'video.mp4');
    try{
@@ -65,7 +69,7 @@ async function download(url){
     if(!['VIDEO_NO_FILE','VIDEO_SIZE','VIDEO_FORMAT'].includes(e.code)&&!/requested format is not available|maximum file size|max.filesize/i.test(e.stderr||''))throw e;
    }finally{await fs.rm(folder,{recursive:true,force:true}).catch(()=>{});}
   }
-  throw Object.assign(Error('No hay una calidad disponible dentro de 50 MB.'),{code:'VIDEO_SIZE',cause:lastError});
+  throw Object.assign(Error('No se obtuvo un MP4 compatible dentro de los límites.'),{code:lastError?.code==='VIDEO_SIZE'?'VIDEO_SIZE':'VIDEO_NO_FORMAT',cause:lastError});
  }finally{await fs.rm(dir,{recursive:true,force:true}).catch(()=>{});}
 }
 
@@ -111,7 +115,7 @@ function createTikTokHandler({store,owners,loadConfig,allowed,paused,isHelper,fe
     if(active(id))await sock.sendMessage(id,{video,mimetype:'video/mp4',caption:'🌸 Naevis Downloader • '+identify(url).name},{quoted:msg});
    }catch(e){
     console.error('[VIDEOS]',e.code||e.name);
-    if(active(id))await reply(e.code==='VIDEO_SIZE'?'⚠️ No encontré una calidad disponible de hasta 50 MB.':e.code==='VIDEO_TIMEOUT'?'⚠️ La descarga tardó más de 120 segundos. Intenta con otro video.':'⚠️ No pude descargar este video. Puede estar restringido o no estar disponible. Intenta con otro enlace.');
+    if(active(id))await reply(e.code==='VIDEO_SIZE'?'⚠️ No encontré una calidad disponible de hasta 50 MB.':e.code==='VIDEO_TIMEOUT'?'⚠️ La descarga tardó más de 120 segundos. Intenta con otro video.':e.code==='VIDEO_NO_FORMAT'?'⚠️ No pude obtener un formato de video compatible. Intenta con otro enlace.':'⚠️ No pude descargar este video. Puede estar restringido o no estar disponible. Intenta con otro enlace.');
    }finally{busy=false;}
   })().catch(e=>console.error('[VIDEOS]',e.code||e.name));
   return true;
