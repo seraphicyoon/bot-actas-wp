@@ -3,3 +3,5 @@ Registro central de categorías en command-router.js, menús contextuales en com
 Los grupos sin modo explícito conservan .comandos de trámites bajo solicitud y .ayuda general; no se activa ni desactiva ningún modo automáticamente. Los avisos de abrir/cerrar son neutrales fuera de los modos explícitos. El instalador conserva modificaciones locales o se detiene si no coincide una sección.
 
 Privacidad del menú: .jinni solo entrega el menú completo a una identidad owner registrada en un chat directo de WhatsApp; en grupos responde con aviso genérico. .ayuda, .comandos y .ayudatienda nunca incluyen la sección OWNER DEL BOT, incluso cuando escribe la owner. No se cambian permisos de ejecución ni datos.
+
+Retiro de códigos de actas NF/MF/DF/D0: solo se reciben nuevos pedidos 5/6/7/8. Se retiran las variantes del menú y de la configuración de precios de nuevos pedidos. No se borran configuraciones históricas ni pendientes ni se alteran otros formatos. El instalador de menú aplica también este cambio localizado en index.js y respalda los tres archivos. Los textos comerciales personalizados guardados en config.json no se reescriben.

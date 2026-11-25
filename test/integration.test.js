@@ -57,3 +57,16 @@ test('owner guide is delivered only for .jinni in an authorized direct chat',asy
  const denied=await f.send('.jinni','buyer','buyer@s.whatsapp.net');assert.match(denied[0].text,/exclusivo/);
  const allowed=await f.send('.jinni',f.owner,privateChat);assert.ok(allowed.some(m=>m.text?.includes('OWNER DEL BOT')));
  }finally{f.close();}});
+
+test('retired acta codes do not create new requests or debit balance',async()=>{const f=await setup();try{
+ const sample='AAAA010101HAAAAA00';
+ await f.send('/s 100',f.owner,f.sales,'buyer@lid');
+ const balance=()=>vm.runInContext('cargarSaldos()[\"sales@g.us\"][\"buyer@c.us\"]',f.sandbox);
+ const before=balance();
+ for(const code of ['NF','MF','DF','D0','nf']){
+  const out=await f.send(sample+' '+code,'buyer');
+  assert.ok(!out.some(m=>m.text?.includes('TRÁMITE SOLICITADO')||m.text?.includes('registrado(s)')));
+  assert.equal(balance(),before);
+ }
+ const out=await f.send(sample+' 5','buyer');assert.ok(out.some(m=>m.text?.includes('registrado(s)')));assert.equal(balance(),before-12);
+ }finally{f.close();}});

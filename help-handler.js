@@ -78,7 +78,7 @@ const procedures=`📄 *MODO TRÁMITES*
 
 .actram mialias — activa trámites en ventas (dueño).
 .comandos — formatos de pedidos. .tramites — catálogo configurado.
-Actas: CURP 5 (nacimiento), CURP 6 (matrimonio), CURP 7 (defunción), CURP 8 (divorcio). Variantes NF, MF, DF y D0.
+Actas: CURP 5 (nacimiento), CURP 6 (matrimonio), CURP 7 (defunción), CURP 8 (divorcio).
 Constancia fiscal: RFC IDCIF 9.
 RFC/CURP clon: DATO CLON.
 Los pedidos requieren proveedor y precios configurados. La entrega depende de ese proveedor.
