@@ -12,10 +12,12 @@ const SERVICES=Object.freeze({
 // API is not connected. Every new service stays manual until an authorized integration is enabled.
 const effectiveMode=()=> 'manual';
 const own=(obj,key)=>Object.prototype.hasOwnProperty.call(obj||{},key);
-function createPriceHandler({store,owners,loadConfig,saveConfig,allowed}){
+const ACTAS=['nacimiento','matrimonio','defuncion','divorcio'];
+const LEGACY_NAMES={nacimiento:'Acta de nacimiento',matrimonio:'Acta de matrimonio',defuncion:'Acta de defunción',divorcio:'Acta de divorcio',sat:'RFC + IDCIF',rfcclon:'RFC CLON'};
+function createPriceHandler({store,owners,loadConfig,saveConfig,allowed,basePrices={nacimiento:12,matrimonio:12,defuncion:12,divorcio:12,sat:40,rfcclon:15}}){
  async function handle(sock,msg){
-  const chat=msg.key.remoteJid,m=msg.message||{},[raw,...args]=(m.conversation||m.extendedTextMessage?.text||'').trim().split(/\s+/);
-  const cmd=raw.toLowerCase();if(!['/precios','/precioextra'].includes(cmd))return false;
+  const chat=msg.key.remoteJid,m=msg.message||{},[raw,...args]=(m.conversation||m.extendedTextMessage?.text||m.imageMessage?.caption||m.videoMessage?.caption||m.documentMessage?.caption||'').trim().split(/\s+/);
+  const cmd=raw.toLowerCase();if(!['/precios','/precioextra','/precio'].includes(cmd))return false;
   const reply=text=>sock.sendMessage(chat,{text});
   if(!/@(s\.whatsapp\.net|lid)$/.test(chat||'')||msg.key.fromMe){await reply('Configura los precios en el privado del bot.');return true;}
   const sender=canonical(chat),cfg=loadConfig(),alias=args[0]?.toLowerCase();
@@ -25,18 +27,28 @@ function createPriceHandler({store,owners,loadConfig,saveConfig,allowed}){
   }
   const prices=cfg.preciosServiciosExtra?.[group]||{};
   if(cmd==='/precios'&&args.length===1){
+   const current={...basePrices,...cfg.precios?.[group]};
+   const legacy=Object.entries(LEGACY_NAMES).map(([code,name])=>'• '+name+' — *$'+current[code]+'* ('+code+')').join('\n');
    const format=([code,v])=>'• '+v.name+' — *$'+(prices[code]??v.suggested)+'*\n  Código: '+code+(own(prices,code)?'':' · sugerido');
    const entries=Object.entries(SERVICES);
    const api=entries.filter(([,v])=>v.plannedMode==='api').map(format).join('\n\n');
    const manual=entries.filter(([,v])=>v.plannedMode==='manual').map(format).join('\n\n');
-   await reply('🌸 *NAEVIS | PRECIOS*\nGrupo: '+alias+'\nMoneda: MXN\n\n*🔗 API PENDIENTE*\n\n'+api+'\n\n*👤 MANUAL*\n\n'+manual+'\n\n*✏️ CAMBIAR PRECIO*\n/precioextra '+alias+' servicio cantidad\nEjemplo: /precioextra '+alias+' nss 12\n\nℹ️ Precios de venta. Los nuevos pedidos todavía no están habilitados.');return true;
+   await reply('🌸 *NAEVIS | PRECIOS*\nGrupo: '+alias+'\nMoneda: MXN\n\n*📄 TRÁMITES ACTUALES*\n'+legacy+'\n\n*🔗 API PENDIENTE*\n\n'+api+'\n\n*👤 MANUAL*\n\n'+manual+'\n\n*✏️ CAMBIAR PRECIO*\n/precio '+alias+' servicio cantidad\nEjemplos:\n/precio '+alias+' actas 15\n/precio '+alias+' nss 12\n\nℹ️ Precios de venta. Los nuevos pedidos todavía no están habilitados.');return true;
   }
   const code=args[1]?.toLowerCase(),amount=Number(args[2]);
-  if(cmd!=='/precioextra'||args.length!==3||!own(SERVICES,code)||!/^\d{1,6}$/.test(args[2]||'')||!Number.isSafeInteger(amount)||amount<1){
-   await reply('Usa /precios alias o /precioextra alias servicio cantidad (entero positivo).');return true;
+  const isActas=code==='actas'||code==='acta',isLegacy=isActas||own(LEGACY_NAMES,code),isExtra=own(SERVICES,code);
+  if(!['/precio','/precioextra'].includes(cmd)||args.length!==3||(!isLegacy&&!isExtra)||!/^\d{1,6}$/.test(args[2]||'')||!Number.isSafeInteger(amount)||amount<1){
+   await reply('Usa /precios alias o /precio alias servicio cantidad (entero positivo).');return true;
   }
-  cfg.preciosServiciosExtra={...cfg.preciosServiciosExtra,[group]:{...prices,[code]:amount}};
-  saveConfig(cfg);await reply('✅ '+SERVICES[code].name+': precio de venta guardado en $'+amount+' MXN. No cambia el costo del proveedor.');return true;
+  let label;
+  if(isLegacy){
+   const updated={...basePrices,...cfg.precios?.[group]};
+   for(const key of isActas?ACTAS:[code])updated[key]=amount;
+   cfg.precios={...cfg.precios,[group]:updated};label=isActas?'Las cuatro actas':LEGACY_NAMES[code];
+  }else{
+   cfg.preciosServiciosExtra={...cfg.preciosServiciosExtra,[group]:{...prices,[code]:amount}};label=SERVICES[code].name;
+  }
+  saveConfig(cfg);await reply('✅ '+label+': precio de venta guardado en $'+amount+' MXN.\nGrupo: '+alias);return true;
  }
  return {handle};
 }

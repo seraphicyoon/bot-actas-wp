@@ -18,8 +18,9 @@ test('actual routing: help, legacy balances, unknown commands, maintenance and r
  out=await f.send('/rechazar '+search.id,f.owner,f.owner+'@s.whatsapp.net');assert.ok(out.some(m=>m.text?.includes('Se devolvieron $10')));
  out=await f.send('/saldos');assert.match(out[0].text,/SALDOS DEL GRUPO/);
  out=await f.send('.grupos');assert.match(out[0].text,/demo/);
- out=await f.send('/precio actas 12abc');assert.match(out[0].text,/entero positivo/);
- out=await f.send('/precio actas 40');assert.match(out[0].text,/actualizado/);
+ out=await f.send('/precio actas 12abc');assert.match(out[0].text,/privado/);
+ out=await f.send('/precio demo actas 12abc',f.owner,f.owner+'@s.whatsapp.net');assert.match(out[0].text,/entero positivo/);
+ out=await f.send('/precio demo actas 40',f.owner,f.owner+'@s.whatsapp.net');assert.match(out[0].text,/guardado/);
  out=await f.send('.desconocido');assert.match(out[0].text,/Comando no disponible/);
  await f.send('/apagado',f.owner,f.owner+'@s.whatsapp.net');out=await f.send('.pago');assert.match(out[0].text,/mantenimiento/);
  await f.send('/prendido',f.owner,f.owner+'@s.whatsapp.net');out=await f.send('.pago');assert.match(out[0].text,/Sin datos/);

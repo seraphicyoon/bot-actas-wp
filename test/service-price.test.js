@@ -19,9 +19,23 @@ test('extra prices belong to the authorized sales group and never place orders',
  assert.match(await send('/precioextra a nss 0'),/positivo/);
  assert.match(await send('/precioextra a nss 80','a',true),/privado/);
  assert.match(await send('/precioextra a rfctexto 8'),/guardado/);
- assert.match(await send('/precioextra a rfcclon 8'),/Usa/);
+ assert.match(await send('/precioextra a rfcclon 8'),/guardado/);
+ assert.equal(cfg.precios['a@g.us'].rfcclon,8);
  assert.match(await send('/precios b','b'),/Semanas cotizadas detalladas.*30/);
  assert.equal(cfg.preciosServiciosExtra['b@g.us'],undefined);
+ assert.match(await send('/precio a actas 15'),/cuatro actas/);
+ for(const code of ['nacimiento','matrimonio','defuncion','divorcio'])assert.equal(cfg.precios['a@g.us'][code],15);
+ assert.equal(cfg.precios['a@g.us'].rfcclon,8);
+ assert.equal(cfg.preciosServiciosExtra['a@g.us'].semanas,35);
+ assert.match(await send('/precio a nacimiento 19'),/guardado/);
+ assert.equal(cfg.precios['a@g.us'].nacimiento,19);
+ assert.equal(cfg.precios['a@g.us'].matrimonio,15);
+ assert.match(await send('/precio a actas 1','b'),/sin permiso/);
+ assert.match(await send('/precio a actas 1','a',true),/privado/);
+ assert.equal(cfg.precios['a@g.us'].matrimonio,15);
+ assert.match(await send('/precio a actas 1.5'),/entero positivo/);
+ assert.match(await send('/precios a'),/Acta de nacimiento.*19/);
+ assert.equal(cfg.precios['b@g.us'],undefined);
 });
 
 test('unsupported permit stays manual; documented services do not activate API automatically',()=>{

@@ -77,7 +77,7 @@ const tiktok = createTikTokHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS
 const bienvenida = createWelcomeHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, allowed: rentas.allowed, paused: ayuda.paused});
 const anuncios = createAnnouncementHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, allowed: rentas.allowed, paused: ayuda.paused, isHelper: moderacion.isHelper, download: downloadContentFromMessage});
 const proveedores = createProviderHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, saveConfig: guardarConfig, allowed: rentas.allowed});
-const preciosExtra = createPriceHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, saveConfig: guardarConfig, allowed: rentas.allowed});
+const preciosExtra = createPriceHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, saveConfig: guardarConfig, allowed: rentas.allowed, basePrices: PRECIOS_BASE});
 const router = createRouter({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, rentas, moderacion, ayuda, stickers, tiktok, bienvenida, anuncios, nombres, tiendas, proveedores, preciosExtra});
 let colaMensajes = Promise.resolve();
 let relojRentas;
@@ -495,7 +495,7 @@ Consulta .jinni para administrar el grupo.`;
 • \`/liquidado [@user]\` : Liquida y resetea el contador.
 
 💰 *FINANZAS Y VENTAS*
-• \`/precio [servicio] [$$]\` : Cambia precios.
+• Consulta la configuración de precios en el privado del bot.
 • \`/saldo [@user] [$$]\` : Suma o resta (ej: /saldo -15 @user)
 • \`/priv [$$] [@user]\` : Cobra por privado (saldo/deuda)
 • \`.saldos\` : Muestra saldos.
@@ -773,26 +773,6 @@ Consulta .jinni para administrar el grupo.`;
             const args = textoMensaje.split(' ').filter(a => a.trim() !== ""); if (args.length < 2) return;
             if (configSistema.gruposDestino[args[1].toLowerCase()] && configSistema.gruposDestino[args[1].toLowerCase()] !== chatId) return await responder('⚠️ Ese alias ya pertenece a otro grupo.');
             configSistema.gruposDestino[args[1].toLowerCase()] = chatId; guardarConfig(configSistema); await responder(`✅ *Enlace Exitoso!* Alias: *${args[1].toLowerCase()}*`); return;
-        }
-
-        if (textoMensaje.toLowerCase().startsWith('/precio ') && tienePermisoOperativo && esGrupo) {
-            const args = textoMensaje.split(/\s+/); if (args.length !== 3) return await responder("⚠️ Usa /precio servicio cantidad (número entero positivo).");
-            let tipoServicio = args[1].toLowerCase(); const nuevoPrecio = Number(args[2]); if (!Number.isSafeInteger(nuevoPrecio) || nuevoPrecio < 1) return await responder("⚠️ El precio debe ser un número entero positivo.");
-            if (!["actas", "acta", ...Object.keys(PRECIOS_BASE)].includes(tipoServicio)) return await responder("⚠️ Servicio desconocido. Consulta .jinni.");
-            if (!configSistema.precios[chatId]) configSistema.precios[chatId] = { ...PRECIOS_BASE };
-            
-            if (tipoServicio === 'actas' || tipoServicio === 'acta') {
-                configSistema.precios[chatId].nacimiento = nuevoPrecio; 
-                configSistema.precios[chatId].matrimonio = nuevoPrecio; 
-                configSistema.precios[chatId].defuncion = nuevoPrecio; 
-                configSistema.precios[chatId].divorcio = nuevoPrecio; 
-            } else {
-                configSistema.precios[chatId][tipoServicio] = nuevoPrecio; 
-            }
-
-            guardarConfig(configSistema); 
-            await responder(`✅ *Nuevo precio* actualizado correctamente: $${nuevoPrecio}.00`); 
-            return;
         }
 
         if (/^\/saldo(?:\s|$)/i.test(textoMensaje) && tienePermisoOperativo) {

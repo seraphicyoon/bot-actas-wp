@@ -58,7 +58,7 @@ function createRouter({store,owners,loadConfig,rentas,moderacion,ayuda,stickers,
   if(await moderacion.handle(sock,msg))return true;
   if(ctx.group&&await ayuda.handle(sock,msg))return true;
   if(category==='providerConfig'&&await proveedores.handle(sock,msg))return true;
-  if(category==='priceConfig'&&await preciosExtra.handle(sock,msg))return true;
+  if((category==='priceConfig'||command==='/precio'&&ctx.mode!=='stock'&&ctx.mode!=='tienda')&&await preciosExtra.handle(sock,msg))return true;
   if(category==='stickers'&&await stickers.handle(sock,msg))return true;
   if(category==='welcome'&&await bienvenida.handle(sock,msg))return true;
   if((category==='videos'||category==='other')&&await tiktok.handle(sock,msg))return true;
