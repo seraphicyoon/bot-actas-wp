@@ -77,6 +77,12 @@ function buildVideoFilter(side,fps,mode='pad') {
   if(mode==='crop')return 'fps='+fps+',scale='+side+':'+side+':force_original_aspect_ratio=increase,crop='+side+':'+side+',format=yuva420p';
   return 'fps='+fps+',scale='+side+':'+side+':force_original_aspect_ratio=decrease,pad='+side+':'+side+':(ow-iw)/2:(oh-ih)/2:color=black@0,format=yuva420p';
 }
+// FFprobe reports the Ogg granule duration, including the Opus pre-skip.
+function audioSeconds(audio,duration) {
+  const head=audio.indexOf(Buffer.from('OpusHead'));
+  const preSkip=head>=0&&head+12<=audio.length?audio.readUInt16LE(head+10)/48000:0;
+  return Math.max(1,Math.min(CLIP,Math.ceil(duration-preSkip-1/48000)));
+}
 async function convert(dir, video, mode='pad') {
   const src=path.join(dir,'input'), ogg=path.join(dir,'audio.ogg'), out=path.join(dir,'sticker.webp');
   await fs.writeFile(src,video);
@@ -95,7 +101,7 @@ async function convert(dir, video, mode='pad') {
     const webp=addSoundExif(await fs.readFile(out),audio,side);
     // Only animated WebP is included in this first experiment.
     if(webp.length<=LIMIT && webp.includes(Buffer.from('ANIM')) && webp.includes(Buffer.from('ANMF')))
-      return {webp,audio,side,seconds:Math.ceil(duration)};
+      return {webp,audio,side,seconds:audioSeconds(audio,duration)};
   }
   throw Error('No se logró generar un sticker animado de hasta 1 MB.');
 }
@@ -215,4 +221,4 @@ function createStickerHandler({owners,download,loadConfig,saveConfig,store,allow
  }
  return {handle};
 }
-module.exports={createStickerHandler,parseCommand,buildVideoFilter,addSoundExif,installOneMessageEncoder,convert,sendPilot,stickerGuide};
+module.exports={createStickerHandler,parseCommand,buildVideoFilter,addSoundExif,installOneMessageEncoder,convert,sendPilot,stickerGuide,audioSeconds};

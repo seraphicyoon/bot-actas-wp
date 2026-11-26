@@ -60,3 +60,12 @@ test('encoder wraps documented wire fields and restores original',()=>{
  }finally{restore();}
  assert.equal(M.encode,old);
 });
+
+ test('Opus pre-skip never inflates a clipped sticker to nine seconds',()=>{
+ const {audioSeconds}=require('../sticker-handler');
+ const head=Buffer.alloc(19);head.write('OpusHead');head.writeUInt16LE(312,10);
+ assert.equal(audioSeconds(head,8.0065),8);
+ assert.equal(audioSeconds(head,7.923063),8);
+ assert.equal(audioSeconds(head,4.0065),4);
+ assert.equal(audioSeconds(head,4.5065),5);
+ });
