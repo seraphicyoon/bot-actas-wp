@@ -6,7 +6,12 @@ test('extra prices belong to the authorized sales group and never place orders',
  const h=createPriceHandler({store:{shop:()=>null},owners:['root@c.us'],loadConfig:()=>JSON.parse(JSON.stringify(cfg)),saveConfig:c=>cfg=c,allowed:()=>true});
  let sent=[];const sock={sendMessage:async(j,m)=>sent.push(m.text)};
  async function send(text,who='a',group=false){sent=[];await h.handle(sock,{key:{remoteJid:group?'a@g.us':who+'@s.whatsapp.net'},message:{conversation:text}});return sent.join('\n');}
- assert.match(await send('/precios a'),/semanas.*30/);
+ const catalog=await send('/precios a');
+ assert.match(catalog,/Semanas cotizadas detalladas.*30/);
+ assert.match(catalog,/API PENDIENTE/);
+ assert.match(catalog,/MANUAL[\s\S]*Permiso sin placas/);
+ assert.match(catalog,/pedidos todavía no están habilitados/);
+ assert.equal((catalog.match(/API PENDIENTE/g)||[]).length,1);
  assert.match(await send('/precioextra a semanas 35'),/guardado/);
  assert.equal(cfg.preciosServiciosExtra['a@g.us'].semanas,35);
  assert.match(await send('/precioextra a nss 80','b'),/sin permiso/);
@@ -15,7 +20,7 @@ test('extra prices belong to the authorized sales group and never place orders',
  assert.match(await send('/precioextra a nss 80','a',true),/privado/);
  assert.match(await send('/precioextra a rfctexto 8'),/guardado/);
  assert.match(await send('/precioextra a rfcclon 8'),/Usa/);
- assert.match(await send('/precios b','b'),/semanas.*30/);
+ assert.match(await send('/precios b','b'),/Semanas cotizadas detalladas.*30/);
  assert.equal(cfg.preciosServiciosExtra['b@g.us'],undefined);
 });
 

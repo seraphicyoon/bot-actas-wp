@@ -25,8 +25,11 @@ function createPriceHandler({store,owners,loadConfig,saveConfig,allowed}){
   }
   const prices=cfg.preciosServiciosExtra?.[group]||{};
   if(cmd==='/precios'&&args.length===1){
-   const lines=Object.entries(SERVICES).map(([code,v])=>code+' — '+v.name+': $'+(prices[code]??v.suggested)+' MXN'+(own(prices,code)?'':' (sugerido)')+' | '+(v.plannedMode==='manual'?'Manual (sin API documentada)':'Manual por ahora; API pendiente de verificar'));
-   await reply('💰 *PRECIOS DE SERVICIOS ADICIONALES — '+alias+'*\n\n'+lines.join('\n')+'\n\n/precioextra '+alias+' servicio cantidad\nSolo configuración de precios y modalidad prevista; recepción de nuevos servicios y pedidos API aún no habilitados.');return true;
+   const format=([code,v])=>'• '+v.name+' — *$'+(prices[code]??v.suggested)+'*\n  Código: '+code+(own(prices,code)?'':' · sugerido');
+   const entries=Object.entries(SERVICES);
+   const api=entries.filter(([,v])=>v.plannedMode==='api').map(format).join('\n\n');
+   const manual=entries.filter(([,v])=>v.plannedMode==='manual').map(format).join('\n\n');
+   await reply('🌸 *NAEVIS | PRECIOS*\nGrupo: '+alias+'\nMoneda: MXN\n\n*🔗 API PENDIENTE*\n\n'+api+'\n\n*👤 MANUAL*\n\n'+manual+'\n\n*✏️ CAMBIAR PRECIO*\n/precioextra '+alias+' servicio cantidad\nEjemplo: /precioextra '+alias+' nss 12\n\nℹ️ Precios de venta. Los nuevos pedidos todavía no están habilitados.');return true;
   }
   const code=args[1]?.toLowerCase(),amount=Number(args[2]);
   if(cmd!=='/precioextra'||args.length!==3||!own(SERVICES,code)||!/^\d{1,6}$/.test(args[2]||'')||!Number.isSafeInteger(amount)||amount<1){
