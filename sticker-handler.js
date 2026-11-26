@@ -83,11 +83,20 @@ function audioSeconds(audio,duration) {
   const preSkip=head>=0&&head+12<=audio.length?audio.readUInt16LE(head+10)/48000:0;
   return Math.max(1,Math.min(CLIP,Math.ceil(duration-preSkip-1/48000)));
 }
-async function convert(dir, video, mode='pad') {
-  const src=path.join(dir,'input'), ogg=path.join(dir,'audio.ogg'), out=path.join(dir,'sticker.webp');
+async function convert(dir, video, mode='pad', normalize=false) {
+  let src=path.join(dir,'input'); const ogg=path.join(dir,'audio.ogg'), out=path.join(dir,'sticker.webp');
   await fs.writeFile(src,video);
   const opts={timeout:30_000,maxBuffer:128*1024,windowsHide:true};
   const ff=async args=>run(process.env.NAEVIS_FFMPEG||'ffmpeg',['-nostdin','-v','error','-y',...args],opts);
+  if(normalize){
+    const normalized=path.join(dir,'normalized.mp4');
+    // Mimic a conventional mobile upload: H.264 baseline, AAC-LC, even square pixels, clean timestamps.
+    await ff(['-i',src,'-t',String(CLIP),'-map','0:v:0','-map','0:a:0',
+      '-vf','fps=30,scale=576:576:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=576:576:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p',
+      '-af','aresample=44100:async=1:first_pts=0','-c:v','libx264','-profile:v','baseline','-preset','ultrafast','-crf','23','-threads','1',
+      '-c:a','aac','-profile:a','aac_low','-ar','44100','-ac','2','-b:a','96k','-movflags','+faststart',normalized]);
+    src=normalized;
+  }
   await ff(['-i',src,'-t',String(CLIP),'-map','0:a:0','-vn','-ac','1','-ar','48000','-c:a','libopus','-b:a','32k','-f','ogg',ogg]);
   const audio=await fs.readFile(ogg);
   if(!audio.length||audio.length>LIMIT)throw Error('Audio vacío o demasiado grande.');
@@ -131,6 +140,7 @@ function parseCommand(text) {
   if(cmd==='.ayudastickers'&&!args.length)return {kind:'settings',arg:'status'};
   if(cmd!=='/stickeraudio')return null;
   if(!args.length||args.length===1&&args[0]==='ajustar')return {kind:'video',mode:'pad'};
+  if(args.length===1&&args[0]==='compatible')return {kind:'video',mode:'crop',normalize:true};
   if(args.length===1&&['recortar','rellenar','cuadrado'].includes(args[0]))return {kind:'video',mode:'crop'};
   return {kind:'invalid'};
 }
@@ -208,7 +218,7 @@ function createStickerHandler({owners,download,loadConfig,saveConfig,store,allow
        let size=0;
        for await(const part of stream){size+=part.length;if(size>INPUT_LIMIT)throw Error('El video supera 16 MB.');parts.push(part);}
        dir=await fs.mkdtemp(path.join(os.tmpdir(),'naevis-sticker-'));
-       const media=await convertVideo(dir,Buffer.concat(parts),command.mode);
+       const media=await convertVideo(dir,Buffer.concat(parts),command.mode,command.normalize===true);
        if(!stillAllowed())return;
        await sendSticker(sock,jid,media,getApi(),stillAllowed);
      }catch(e){

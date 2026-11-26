@@ -69,3 +69,8 @@ test('encoder wraps documented wire fields and restores original',()=>{
  assert.equal(audioSeconds(head,4.0065),4);
  assert.equal(audioSeconds(head,4.5065),5);
  });
+
+test('compatibility experiment is explicit and leaves existing commands unchanged',()=>{
+ assert.deepEqual(parseCommand('/stickeraudio compatible'),{kind:'video',mode:'crop',normalize:true});
+ assert.equal(parseCommand('/stickeraudio recortar').normalize,undefined);
+});
