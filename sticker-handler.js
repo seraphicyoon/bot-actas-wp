@@ -56,17 +56,18 @@ function addSoundExif(webp, audio, side) {
 
 // Encode the two documented experimental fields without editing node_modules.
 // The exact sticker object identifies this operation, even when Baileys shallow-copies the message.
-function installOneMessageEncoder(proto, marker, sticker, audio) {
+function installOneMessageEncoder(proto, marker, sticker, audio, direct=false) {
   const M=proto.Message, S=M.StickerMessage, A=M.AudioMessage;
   const original=M.encode;
   if(typeof original!=='function'||typeof S?.encode!=='function'||typeof A?.encode!=='function') throw Error('Protocolo incompatible.');
   const s=S.encode(sticker);
   s.uint32(26*8+2).bytes(A.encode(audio).finish());
-  const inner=original.call(M,{}).uint32(26*8+2).bytes(s.finish()).finish();
+  const embedded=s.finish();
+  const inner=original.call(M,{}).uint32(26*8+2).bytes(embedded).finish();
   const wrapper=original.call(M,{}).uint32(10).bytes(inner).finish();
   function special(message, writer) {
     if(message!==marker && message?.stickerMessage!==sticker) return original.call(this,message,writer);
-    return original.call(this,{},writer).uint32(134*8+2).bytes(wrapper);
+    return direct ? original.call(this,{},writer).uint32(26*8+2).bytes(embedded) : original.call(this,{},writer).uint32(134*8+2).bytes(wrapper);
   }
   M.encode=special;
   if(M.encode!==special) throw Error('No se pudo habilitar el codificador experimental.');
@@ -114,7 +115,7 @@ async function convert(dir, video, mode='pad', normalize=false) {
   }
   throw Error('No se logró generar un sticker animado de hasta 1 MB.');
 }
-async function sendPilot(sock, jid, media, api, stillAllowed=()=>true) {
+async function sendPilot(sock, jid, media, api, stillAllowed=()=>true, direct=false) {
   const {proto,prepareWAMessageMedia}=api;
   if(typeof sock.waUploadToServer!=='function'||typeof prepareWAMessageMedia!=='function'||typeof sock.relayMessage!=='function')
     throw Error('La versión instalada de Baileys no permite esta prueba.');
@@ -129,7 +130,7 @@ async function sendPilot(sock, jid, media, api, stillAllowed=()=>true) {
   stickerMessage.width=media.side;stickerMessage.height=media.side;stickerMessage.isAnimated=true;
   if(!stillAllowed())throw Error('Función desactivada antes de enviar.');
   const marker={stickerMessage,[Symbol.for('naevis.soundSticker')]:true}; // Baileys detects mediatype=sticker from this object.
-  const restore=installOneMessageEncoder(proto,marker,stickerMessage,audioMessage);
+  const restore=installOneMessageEncoder(proto,marker,stickerMessage,audioMessage,direct);
   try { return await sock.relayMessage(jid,marker,{additionalAttributes:{type:'media'}}); }
   finally { restore(); }
 }
@@ -140,6 +141,7 @@ function parseCommand(text) {
   if(cmd==='.ayudastickers'&&!args.length)return {kind:'settings',arg:'status'};
   if(cmd!=='/stickeraudio')return null;
   if(!args.length||args.length===1&&args[0]==='ajustar')return {kind:'video',mode:'pad'};
+  if(args.length===1&&args[0]==='directo')return {kind:'video',mode:'crop',direct:true};
   if(args.length===1&&args[0]==='compatible')return {kind:'video',mode:'crop',normalize:true};
   if(args.length===1&&['recortar','rellenar','cuadrado'].includes(args[0]))return {kind:'video',mode:'crop'};
   return {kind:'invalid'};
@@ -220,7 +222,7 @@ function createStickerHandler({owners,download,loadConfig,saveConfig,store,allow
        dir=await fs.mkdtemp(path.join(os.tmpdir(),'naevis-sticker-'));
        const media=await convertVideo(dir,Buffer.concat(parts),command.mode,command.normalize===true);
        if(!stillAllowed())return;
-       await sendSticker(sock,jid,media,getApi(),stillAllowed);
+       await sendSticker(sock,jid,media,getApi(),stillAllowed,command.direct===true);
      }catch(e){
        console.error('[STICKER]',e.code||e.name);
        if(stillAllowed())await reply('⚠️ No pude crear el sticker. Verifica que el video tenga sonido y que el servidor tenga FFmpeg y FFprobe. Intenta con un video más corto.');

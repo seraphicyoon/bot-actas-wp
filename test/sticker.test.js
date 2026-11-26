@@ -74,3 +74,18 @@ test('compatibility experiment is explicit and leaves existing commands unchange
  assert.deepEqual(parseCommand('/stickeraudio compatible'),{kind:'video',mode:'crop',normalize:true});
  assert.equal(parseCommand('/stickeraudio recortar').normalize,undefined);
 });
+
+test('direct sound sticker sends field 26 without the field 134 envelope',()=>{
+ const {proto}=require('@whiskeysockets/baileys');
+ const M=proto.Message,old=M.encode,sticker={mimetype:'image/webp'},marker={stickerMessage:sticker};
+ const restore=installOneMessageEncoder(proto,marker,sticker,{mimetype:'audio/ogg; codecs=opus'},true);
+ try{
+  const raw=Buffer.from(M.encode(marker).finish());
+  assert.deepEqual([...raw.subarray(0,2)],[0xd2,0x01]);
+  assert.ok(raw.includes(Buffer.from('audio/ogg; codecs=opus')));
+  assert.deepEqual(Buffer.from(M.encode({...marker}).finish()),raw);
+  assert.deepEqual(Buffer.from(M.encode({conversation:'normal'}).finish()),Buffer.from(old({conversation:'normal'}).finish()));
+ }finally{restore();}
+ assert.equal(M.encode,old);
+ assert.deepEqual(parseCommand('/stickeraudio directo'),{kind:'video',mode:'crop',direct:true});
+});
