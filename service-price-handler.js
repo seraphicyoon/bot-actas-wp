@@ -2,13 +2,15 @@
 const {canonical}=require('./message-utils');
 // Suggested selling prices only. Not an order processor and never charges a customer.
 const SERVICES=Object.freeze({
- semanas:Object.freeze({name:'Semanas cotizadas detalladas',suggested:30}),
- nss:Object.freeze({name:'NSS',suggested:10}),
- vigencia:Object.freeze({name:'Vigencia de derechos',suggested:15}),
- cfe:Object.freeze({name:'Recibo de luz CFE',suggested:15}),
- permiso:Object.freeze({name:'Permiso sin placas 30 días',suggested:65}),
- rfctexto:Object.freeze({name:'RFC desde CURP (texto)',suggested:5})
+ semanas:Object.freeze({name:'Semanas cotizadas detalladas',suggested:30,apiCode:"semanas_cotizadas_detalladas",plannedMode:'api'}),
+ nss:Object.freeze({name:'NSS',suggested:10,apiCode:"nss",plannedMode:'api'}),
+ vigencia:Object.freeze({name:'Vigencia de derechos',suggested:15,apiCode:"vigencia_derechos",plannedMode:'api'}),
+ cfe:Object.freeze({name:'Recibo de luz CFE',suggested:15,apiCode:"recibo_luz",plannedMode:'api'}),
+ permiso:Object.freeze({name:'Permiso sin placas 30 días',suggested:65,apiCode:null,plannedMode:'manual'}),
+ rfctexto:Object.freeze({name:'RFC desde CURP (texto)',suggested:5,apiCode:"rfc_curp_texto",plannedMode:'api'})
 });
+// API is not connected. Every new service stays manual until an authorized integration is enabled.
+const effectiveMode=()=> 'manual';
 const own=(obj,key)=>Object.prototype.hasOwnProperty.call(obj||{},key);
 function createPriceHandler({store,owners,loadConfig,saveConfig,allowed}){
  async function handle(sock,msg){
@@ -23,8 +25,8 @@ function createPriceHandler({store,owners,loadConfig,saveConfig,allowed}){
   }
   const prices=cfg.preciosServiciosExtra?.[group]||{};
   if(cmd==='/precios'&&args.length===1){
-   const lines=Object.entries(SERVICES).map(([code,v])=>code+' — '+v.name+': $'+(prices[code]??v.suggested)+' MXN'+(own(prices,code)?'':' (sugerido)'));
-   await reply('💰 *PRECIOS DE SERVICIOS ADICIONALES — '+alias+'*\n\n'+lines.join('\n')+'\n\n/precioextra '+alias+' servicio cantidad\nSolo configuración de precios; pedidos API aún no habilitados.');return true;
+   const lines=Object.entries(SERVICES).map(([code,v])=>code+' — '+v.name+': $'+(prices[code]??v.suggested)+' MXN'+(own(prices,code)?'':' (sugerido)')+' | '+(v.plannedMode==='manual'?'Manual (sin API documentada)':'Manual por ahora; API pendiente de verificar'));
+   await reply('💰 *PRECIOS DE SERVICIOS ADICIONALES — '+alias+'*\n\n'+lines.join('\n')+'\n\n/precioextra '+alias+' servicio cantidad\nSolo configuración de precios y modalidad prevista; recepción de nuevos servicios y pedidos API aún no habilitados.');return true;
   }
   const code=args[1]?.toLowerCase(),amount=Number(args[2]);
   if(cmd!=='/precioextra'||args.length!==3||!own(SERVICES,code)||!/^\d{1,6}$/.test(args[2]||'')||!Number.isSafeInteger(amount)||amount<1){
@@ -35,4 +37,4 @@ function createPriceHandler({store,owners,loadConfig,saveConfig,allowed}){
  }
  return {handle};
 }
-module.exports={createPriceHandler,SERVICES};
+module.exports={createPriceHandler,SERVICES,effectiveMode};

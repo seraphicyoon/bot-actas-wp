@@ -18,3 +18,10 @@ test('extra prices belong to the authorized sales group and never place orders',
  assert.match(await send('/precios b','b'),/semanas.*30/);
  assert.equal(cfg.preciosServiciosExtra['b@g.us'],undefined);
 });
+
+test('unsupported permit stays manual; documented services do not activate API automatically',()=>{
+ const {SERVICES,effectiveMode}=require('../service-price-handler');
+ assert.equal(SERVICES.permiso.apiCode,null);
+ assert.equal(SERVICES.permiso.plannedMode,'manual');
+ for(const [key,s] of Object.entries(SERVICES)){assert.equal(effectiveMode(key),'manual');if(key!=='permiso')assert.equal(s.plannedMode,'api');}
+});
