@@ -18,6 +18,7 @@ const {createWelcomeHandler} = require('./welcome-handler');
 const {createAnnouncementHandler} = require('./announcement-handler');
 const {createRouter} = require('./command-router');
 const {createProviderHandler} = require('./provider-handler');
+const {createPriceHandler} = require('./service-price-handler');
 
 process.on('unhandledRejection', (reason) => { console.log('⚠️ Error bloqueado:', reason); });
 
@@ -76,7 +77,8 @@ const tiktok = createTikTokHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS
 const bienvenida = createWelcomeHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, allowed: rentas.allowed, paused: ayuda.paused});
 const anuncios = createAnnouncementHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, allowed: rentas.allowed, paused: ayuda.paused, isHelper: moderacion.isHelper, download: downloadContentFromMessage});
 const proveedores = createProviderHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, saveConfig: guardarConfig, allowed: rentas.allowed});
-const router = createRouter({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, rentas, moderacion, ayuda, stickers, tiktok, bienvenida, anuncios, nombres, tiendas, proveedores});
+const preciosExtra = createPriceHandler({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, saveConfig: guardarConfig, allowed: rentas.allowed});
+const router = createRouter({store: tiendaDB, owners: SÚPER_ADMINS_NATOS, loadConfig: cargarConfig, rentas, moderacion, ayuda, stickers, tiktok, bienvenida, anuncios, nombres, tiendas, proveedores, preciosExtra});
 let colaMensajes = Promise.resolve();
 let relojRentas;
 

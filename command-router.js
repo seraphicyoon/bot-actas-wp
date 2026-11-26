@@ -16,6 +16,7 @@ const categories={
  procedures:['/nombre','.tramites','/corte','/clearcorte','/renapo','/vip','/delvip','.vips','/liquidado','.deudores','.deuda','/auto','/offauto','/lealtad','.compras','/saldo','/priv','.saldos','/saldos'],
  provider:['/r'],
  providerConfig:['/setproveedor','/proveedor','/proveedores'],
+ priceConfig:['/precios','/precioextra'],
  ownerPrivate:['/avisos','/rechazar'],
  legacy:['/setgrupo','/activargrupo','/desactivargrupo','/precio','.stock','/delvendedor','.ver']
 };
@@ -45,7 +46,7 @@ async function roleOf({sock,msg,ctx,owners,config,isHelper}){
  return 'member';
 }
 const managers=['owner','groupOwner','admin'];
-function createRouter({store,owners,loadConfig,rentas,moderacion,ayuda,stickers,tiktok,bienvenida,anuncios,nombres,tiendas,proveedores}){
+function createRouter({store,owners,loadConfig,rentas,moderacion,ayuda,stickers,tiktok,bienvenida,anuncios,nombres,tiendas,proveedores,preciosExtra}){
  async function handle(sock,msg){
   const chat=msg.key.remoteJid;if(!chat)return true;
   const {command,text,category}=commandOf(msg);
@@ -57,6 +58,7 @@ function createRouter({store,owners,loadConfig,rentas,moderacion,ayuda,stickers,
   if(await moderacion.handle(sock,msg))return true;
   if(ctx.group&&await ayuda.handle(sock,msg))return true;
   if(category==='providerConfig'&&await proveedores.handle(sock,msg))return true;
+  if(category==='priceConfig'&&await preciosExtra.handle(sock,msg))return true;
   if(category==='stickers'&&await stickers.handle(sock,msg))return true;
   if(category==='welcome'&&await bienvenida.handle(sock,msg))return true;
   if((category==='videos'||category==='other')&&await tiktok.handle(sock,msg))return true;
