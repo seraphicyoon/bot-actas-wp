@@ -19,6 +19,7 @@ const {createAnnouncementHandler} = require('./announcement-handler');
 const {createRouter} = require('./command-router');
 const {createProviderHandler} = require('./provider-handler');
 const {createPriceHandler} = require('./service-price-handler');
+const {hasProviderLink,MANUAL_NOTICE} = require('./provider-link-filter');
 
 process.on('unhandledRejection', (reason) => { console.log('⚠️ Error bloqueado:', reason); });
 
@@ -157,7 +158,12 @@ async function iniciarBot() {
         let textoMensaje = msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || msg.message.documentMessage?.caption || "";
         textoMensaje = textoMensaje.trim();
 
-        const responder = async (texto) => { await sock.sendMessage(chatId, { text: texto }, { quoted: msg }); };
+        const responder = async (texto) => {
+            if (!SÚPER_ADMINS_NATOS.includes(toViejo(chatId)) && hasProviderLink(texto)) {
+                await sock.sendMessage(chatId, { text: MANUAL_NOTICE }); return;
+            }
+            await sock.sendMessage(chatId, { text: texto }, { quoted: msg });
+        };
 
         const extraerIdCitado = () => {
             const p = msg.message.extendedTextMessage?.contextInfo?.participant;
@@ -178,6 +184,10 @@ async function iniciarBot() {
                         const cliente = datos.cliente;
 
                         if (!ayuda.paused() && rentas.allowed(grupoVentas) && tiendaDB.shop(grupoVentas)?.mode !== 'tienda' && configSistema.autoMode && configSistema.autoMode[grupoVentas]) {
+                            if (hasProviderLink(msg.message)) {
+                                await sock.sendMessage(grupoVentas, { text: MANUAL_NOTICE });
+                                break; // Keep pending, do not forward or mark delivered.
+                            }
                             const msgToForward = { key: msg.key, message: msg.message };
                             try {
                                 await sock.sendMessage(grupoVentas, { forward: msgToForward });
@@ -189,6 +199,20 @@ async function iniciarBot() {
                         break; 
                     }
                 }
+            }
+        }
+
+        // A linked provider may return a link instead of a file. Notify only on an exact pending reference.
+        if (hasProviderLink(textoMensaje)) {
+            const matches = Object.entries(configSistema.pendientes || {}).filter(([id,datos]) =>
+                configSistema.gruposProveedores?.[datos.grupoVentas] === chatId &&
+                textoMensaje.toUpperCase().includes(id.toUpperCase()) &&
+                configSistema.autoMode?.[datos.grupoVentas] && !ayuda.paused() &&
+                rentas.allowed(datos.grupoVentas) && tiendaDB.shop(datos.grupoVentas)?.mode !== 'tienda');
+            if (matches.length === 1) {
+                const [,datos] = matches[0];
+                await sock.sendMessage(datos.grupoVentas, { text: MANUAL_NOTICE });
+                return; // Never treat a link-only response as a delivery or refund.
             }
         }
 
@@ -427,6 +451,11 @@ Consulta .jinni para administrar el grupo.`;
 
                 const quotedInfo = msg.message.extendedTextMessage?.contextInfo;
                 if (quotedInfo && quotedInfo.quotedMessage) {
+                    if (hasProviderLink(quotedInfo.quotedMessage)) {
+                        await sock.sendMessage(idDelChatDestino, { text: MANUAL_NOTICE });
+                        await responder('⚠️ Enlace de proveedor omitido. Entrega el resultado manualmente.');
+                        return;
+                    }
                     if (targetUser && !targetUser.includes('@g.us')) {
                         await sock.sendMessage(idDelChatDestino, { text: `✅ ¡Tu trámite está listo! @${targetUser.split('@')[0]}`, mentions: [toBaileys(targetUser)] });
                     }

@@ -1,6 +1,7 @@
 'use strict';
 const {randomUUID}=require('crypto');
 const {canonical}=require('./message-utils');
+const {hasProviderLink,MANUAL_NOTICE}=require('./provider-link-filter');
 function createNameHandler({store,owners,loadConfig,loadBalances,saveBalances,allowed}){
  const db=store.db;
  db.exec('CREATE TABLE IF NOT EXISTS name_owner_chat(owner TEXT PRIMARY KEY, chat TEXT NOT NULL)');
@@ -58,6 +59,10 @@ function createNameHandler({store,owners,loadConfig,loadBalances,saveBalances,al
  }
  if(!allowed(row.chat)||store.shop(row.chat)?.mode==='tienda'){await reply('⚠️ El grupo de esta solicitud no está activo en trámites.');return true;}
  if(!ctx.quotedMessage||!ctx.stanzaId){await reply(`⚠️ Responde al texto, imagen o documento del resultado con /r ${row.id}`);return true;}
+ if(hasProviderLink(ctx.quotedMessage)){
+  await sock.sendMessage(row.customer.replace('@c.us','@s.whatsapp.net'),{text:MANUAL_NOTICE});
+  await reply('⚠️ Enlace de proveedor omitido. La solicitud sigue pendiente de entrega manual.');return true;
+ }
  db.prepare("UPDATE name_requests SET state='sending' WHERE id=?").run(row.id);
  try{await sock.sendMessage(row.customer.replace('@c.us','@s.whatsapp.net'),{forward:{key:{remoteJid:chat,id:ctx.stanzaId,participant:ctx.participant,fromMe:false},message:ctx.quotedMessage}});db.prepare("UPDATE name_requests SET state='delivered' WHERE id=?").run(row.id);await reply('✅ Resultado entregado al privado del cliente.');}
  catch(e){db.prepare("UPDATE name_requests SET state='review' WHERE id=? AND state='sending'").run(row.id);await reply('⚠️ Revisa el privado del cliente: no pude confirmar la entrega. No se reenvía ni devuelve saldo automáticamente.');}return true;
